@@ -1,0 +1,17 @@
+[package]
+name = "RTBpoject"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "4.5.1"
+serde = { version = "1.0.197", features = ["derive"] }
+dashmap = "5.5.3"
+serde_json = "1.0.115"
+chrono = "0.4.37"
+tokio = { version = "1.10.0", features = ["full"] }
+rayon = "1.10.0"
+serde-querystring = "0.2.0"
+serde-querystring-actix = "0.2.0"
