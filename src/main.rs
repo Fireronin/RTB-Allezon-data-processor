@@ -45,7 +45,7 @@ async fn main() -> std::io::Result<()> {
     let shared_app_state = web::Data::new(AppState {
         user_tags_views: DashMap::new(),
         user_tags_buys: DashMap::new(),
-        compression_mappings: compression_mappings,
+        compression_mappings,
         minute_data_ptr: minute_data_ptr.clone(),
         tag_sender: tx,
     });
@@ -57,7 +57,7 @@ async fn main() -> std::io::Result<()> {
             .service(user_profiles)
             .service(aggregates)
     })
-    .bind(("10.111.255.123", 8082))?;
+    .bind(("10.112.103.101", 8082))?;
 
     // split control flow into two tasks
     // 1. to receive compressed tags and store them in memory
