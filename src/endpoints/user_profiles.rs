@@ -47,12 +47,12 @@ pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie:
     let user_tags_buys = data.user_tags_buys.get(&cookie);
 
     let tags_views = match user_tags_views {
-        Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)),
+        Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)).await,
         None => Vec::new(),
     };
 
     let tags_buys = match user_tags_buys {
-        Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)),
+        Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)).await,
         None => Vec::new(),
     };
 
