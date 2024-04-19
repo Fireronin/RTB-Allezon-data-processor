@@ -27,11 +27,12 @@ pub struct ProductInfo {
     price: i32,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug)]
 pub struct UserTags {
     current_id: usize,
     timestamps: Vec<i64>,
     tags: Vec<UserTag>,
+    mutex: tokio::sync::Mutex<()>,
 }
 
 #[derive(Deserialize, Serialize,Clone,Debug,PartialEq)]
@@ -122,7 +123,8 @@ pub struct MinuteData {
 
 
 
-pub fn add_user_tag (user_tags: &mut UserTags, tag: UserTag, timestamp: i64) {
+pub async fn add_user_tag (user_tags: &mut UserTags, tag: UserTag, timestamp: i64) {
+    let lock = user_tags.mutex.lock().await;
     if user_tags.current_id < MAX_TAGS {
         user_tags.tags.push(tag);
         user_tags.timestamps.push(timestamp);
@@ -136,12 +138,11 @@ pub fn add_user_tag (user_tags: &mut UserTags, tag: UserTag, timestamp: i64) {
     if user_tags.current_id >= MAX_TAGS {
         user_tags.current_id = 0;
     }
-    // println!("current_id: {}", user_tags.current_id);
-    // println!("tags: {:?}", user_tags.tags);
-
+    drop(lock);
 }
 
-pub fn get_user_tags (user_tags: &UserTags, start_timestamp: i64, end_timestamp: i64, limit: option::Option<usize>) -> Vec<UserTag> {
+pub async fn get_user_tags (user_tags: &UserTags, start_timestamp: i64, end_timestamp: i64, limit: option::Option<usize>) -> Vec<UserTag> {
+    let lock = user_tags.mutex.lock().await;
     let mut tags = Vec::new();
     let mut count = 0;
     // iterate in reverse order from current_id to 0 in loop 1 and from MAX_TAGS to current_id+1 in loop 2
@@ -156,6 +157,7 @@ pub fn get_user_tags (user_tags: &UserTags, start_timestamp: i64, end_timestamp:
             count += 1;
         }
     }
+    drop(lock);
     tags
 }
 
@@ -165,6 +167,7 @@ impl Default for UserTags {
             current_id: 0,
             tags: Vec::new(),
             timestamps: Vec::new(),
+            mutex: tokio::sync::Mutex::new(()),
         }
     }
 }
