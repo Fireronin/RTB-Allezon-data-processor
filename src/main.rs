@@ -57,7 +57,7 @@ async fn main() -> std::io::Result<()> {
             .service(user_profiles)
             .service(aggregates)
     })
-    .bind(("10.112.103.101", 8082))?;
+    .bind(("10.112.103.101", 8083))?;
 
     // split control flow into two tasks
     // 1. to receive compressed tags and store them in memory

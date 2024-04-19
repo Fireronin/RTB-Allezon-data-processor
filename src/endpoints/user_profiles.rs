@@ -1,5 +1,6 @@
 use actix_web::{post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::AppState;
 
@@ -19,7 +20,7 @@ struct UserProfileResponse {
 }
 
 #[post("/user_profiles/{cookie}")]
-pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>,info: web::Query<UserProfileRequest>) -> impl Responder {
+pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: web::Path<String>,info: web::Query<UserProfileRequest>) -> impl Responder {
     // println!("~~~~~~~~~~~~~~ User Profiles ~~~~~~~~~~~~~~");
     // println!("req_body: {}", req_body);
     // println!("cookie: {}", cookie);
@@ -61,8 +62,18 @@ pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie:
         views: tags_views,
         buys: tags_buys,
     };
-
-
+    
+    let response_json = json!(response);
+    let request_json:Value = serde_json::from_str(req_body.as_str()).unwrap();
+    
+    // println!("Returned {}", response_json.to_string());
+    // println!("Expected {}", request_json.to_string());
+    // 
+    if request_json != response_json {
+        println!("####################");
+        println!("Returning {}, but expected {}", response_json.to_string(), request_json.to_string());
+    }
+    
     HttpResponse::Ok().json(response)
 }
 

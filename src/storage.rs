@@ -152,7 +152,7 @@ pub async fn get_user_tags (user_tags: &UserTags, start_timestamp: i64, end_time
         if count >= limit.unwrap_or(MAX_TAGS) {
             break;
         }
-        if user_tags.timestamps[i] >= start_timestamp && user_tags.timestamps[i] <= end_timestamp {
+        if user_tags.timestamps[i] >= start_timestamp && user_tags.timestamps[i] < end_timestamp {
             tags.push(user_tags.tags[i].clone());
             count += 1;
         }

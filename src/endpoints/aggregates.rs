@@ -86,23 +86,23 @@ struct AggregateRequest {
 
 #[post("/aggregates")]
 pub async fn aggregates(data: web::Data<AppState>, req_body: String,info: web::Query<AggregateRequest>,req: HttpRequest) -> impl Responder {
-    println!("~~~~~~~~~~~~~~ Aggregates ~~~~~~~~~~~~~~");
-    println!("time_range: {}", info.time_range);
-    println!("action: {}", info.action);
-    
-    println!("origin: {:?}", info.origin);
-    println!("brand_id: {:?}", info.brand_id);
-    println!("category_id: {:?}", info.category_id);
-    println!("req_body: {}", req_body);
+    // println!("~~~~~~~~~~~~~~ Aggregates ~~~~~~~~~~~~~~");
+    // println!("time_range: {}", info.time_range);
+    // println!("action: {}", info.action);
+    // 
+    // println!("origin: {:?}", info.origin);
+    // println!("brand_id: {:?}", info.brand_id);
+    // println!("category_id: {:?}", info.category_id);
+    // println!("req_body: {}", req_body);
     let parsed = DuplicateQS::parse(req.query_string().as_bytes());
     let values = parsed.values("aggregates".as_bytes()); // Will give you a vector of b"bar" and b"baz"
     if values.is_none() {
-        println!("Invalid aggregates");
+        // println!("Invalid aggregates");
         return HttpResponse::BadRequest().body("Invalid aggregates");
     }
 
     let aggregates_vec = values.unwrap().iter().map(|x| std::str::from_utf8(&x.clone().unwrap()).unwrap().to_string()).collect::<Vec<String>>();
-    println!("aggregates: {:?}", aggregates_vec);
+    // println!("aggregates: {:?}", aggregates_vec);
     let time_range: Vec<&str> = info.time_range.split("_").collect();
     // add Z to the end of the time string to make it RFC3339 compliant
     let time_range: Vec<String> = time_range.iter().map(|x| x.to_string() + "Z").collect();
@@ -247,7 +247,7 @@ pub async fn aggregates(data: web::Data<AppState>, req_body: String,info: web::Q
 
     let json_response = serde_json::to_string(&response).unwrap();
 
-    println!("json_response: {}", json_response);
+    // println!("json_response: {}", json_response);
 
     HttpResponse::Ok().json(response)
 }
