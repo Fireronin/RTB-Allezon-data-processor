@@ -141,7 +141,9 @@ pub async fn get_user_tags(user_tags: &UserTags, start_timestamp: i64, end_times
 	let mut count = 0;
 	// iterate in reverse order from current_id to 0 in loop 1 and from MAX_TAGS to current_id+1 in loop 2
 	// create combined iterator current_id to 0 and MAX_TAGS to current_id+1
-	let iter = (0..user_tags.current_id).rev().chain((user_tags.current_id..min(MAX_TAGS, user_tags.tags.len())).rev());
+	let iter = (0..user_tags.current_id)
+		.rev()
+		.chain((user_tags.current_id..min(MAX_TAGS, user_tags.tags.len())).rev());
 	for i in iter {
 		if count >= limit.unwrap_or(MAX_TAGS) {
 			break;
