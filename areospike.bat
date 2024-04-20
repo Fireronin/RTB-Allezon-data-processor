@@ -1,1 +1,1 @@
-docker run -d -v  "%cd%/db:/opt/aerospike/etc/" -e "FEATURE_KEY_FILE=/opt/aerospike/etc/features.conf" -e "APLICATION_KEY_FILE=/opt/aerospike/etc/aerospike.conf" --name aerospike -p 3000-3002:3000-3002 aerospike:ee-7.0.0.7
+docker run -d -v  "%cd%/db:/opt/aerospike/etc/" -e "FEATURE_KEY_FILE=/opt/aerospike/etc/features.conf" -e "APLICATION_KEY_FILE=/opt/aerospike/etc/aerospike.conf" --name aerospike -p 3000-3002:3000-3002 aerospike:ce-7.0.0.7
