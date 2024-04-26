@@ -3,8 +3,8 @@ use actix_web::{HttpResponse, post, Responder, web};
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
-use crate::types::{MAX_TAGS, UserTag, UserTagExternal};
-use crate::utils::{parse_time_range, TimeRange};
+use crate::data::*;
+use crate::data::time::*;
 
 #[derive(Deserialize, Serialize)]
 struct UserProfileRequest {

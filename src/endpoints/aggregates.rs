@@ -7,8 +7,9 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 use crate::AppState;
+use crate::data::*;
 
-use crate::storage::{MinuteData, UserTagType};
+use crate::storage::MinuteData;
 
 struct SpoolingResult {
 	count: u64,
@@ -17,7 +18,7 @@ struct SpoolingResult {
 
 fn spool(data: &Arc<DashMap<i64, MinuteData>>,
          minutes_to_process: Range<i64>,
-         action: &UserTagType,
+         action: &UserAction,
          origin: u16,
          brand_id: u16,
          category_id: u16,
@@ -134,8 +135,8 @@ pub async fn aggregates(_data: web::Data<AppState>, req_body: String, _info: web
 	//
 	//
 	// let action = match action.as_str() {
-	// 	"VIEW" => UserTagType::VIEW,
-	// 	"BUY" => UserTagType::BUY,
+	// 	"VIEW" => UserAction::VIEW,
+	// 	"BUY" => UserAction::BUY,
 	// 	_ => panic!("Invalid action"),
 	// };
 	//

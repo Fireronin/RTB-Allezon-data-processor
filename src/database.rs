@@ -2,7 +2,7 @@ use std::env;
 use aerospike::{as_key, as_val, Client, ClientPolicy, Key, Record, Value, WritePolicy};
 use aerospike::operations::{lists, Operation};
 use aerospike::operations::lists::{ListOrderType, ListPolicy, ListReturnType, ListWriteFlags};
-use crate::types::*;
+use crate::data::*;
 
 /*
 namespace aero {

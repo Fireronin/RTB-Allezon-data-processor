@@ -1,153 +1,17 @@
 use std::sync::Arc;
-use std::sync::atomic;
 
-use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+use crate::data::*;
 use crate::database::Database;
-
-pub const MAX_TAGS: usize = 200;
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct UserTag {
-	pub product_info: ProductInfo,
-	pub time: String,
-	pub cookie: String,
-	pub country: String,
-	pub device: String,
-	pub action: String,
-	pub origin: String,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct ProductInfo {
-	product_id: u64,
-	brand_id: String,
-	category_id: String,
-	price: i32,
-}
-
-#[derive(Debug)]
-pub struct UserTags {
-	current_id: usize,
-	timestamps: Vec<i64>,
-	tags: Vec<UserTag>,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum UserTagType {
-	VIEW,
-	BUY,
-}
-
-fn get_user_tag_type(action: &str) -> UserTagType {
-	match action {
-		"VIEW" => UserTagType::VIEW,
-		"BUY" => UserTagType::BUY,
-		_ => panic!("Invalid action"),
-	}
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct CompressedTag {
-	timestamp: i64,
-	origin_id: u16,
-	brand_id: u16,
-	category_id: u16,
-	price: u32,
-	action: UserTagType
-}
-
-
-#[derive(Clone, Debug)]
-pub struct CompressionMappings {
-	pub origin_id_map: DashMap<String, u16>,
-	pub brand_id_map: DashMap<String, u16>,
-	pub category_id_map: DashMap<String, u16>,
-	pub origin_id_count: Arc<atomic::AtomicUsize>,
-	pub brand_id_count: Arc<atomic::AtomicUsize>,
-	pub category_id_count: Arc<atomic::AtomicUsize>,
-}
-
-pub fn compress_tag(tag: &UserTag, compression_map: &CompressionMappings) -> CompressedTag {
-	let origin_id = tag.origin.clone();
-	let brand_id = tag.product_info.brand_id.clone();
-	let category_id = tag.product_info.category_id.clone();
-	let price = tag.product_info.price;
-	
-	let origin_id = match compression_map.origin_id_map.get(&origin_id) {
-		Some(id) => *id,
-		None => {
-			let id = compression_map.origin_id_count.fetch_add(1, atomic::Ordering::SeqCst) as u16;
-			compression_map.origin_id_map.insert(origin_id, id);
-			id
-		}
-	};
-	
-	let brand_id = match compression_map.brand_id_map.get(&brand_id) {
-		Some(id) => *id,
-		None => {
-			let id = compression_map.brand_id_count.fetch_add(1, atomic::Ordering::SeqCst) as u16;
-			compression_map.brand_id_map.insert(brand_id, id);
-			id
-		}
-	};
-	
-	let category_id = match compression_map.category_id_map.get(&category_id) {
-		Some(id) => *id,
-		None => {
-			let id = compression_map.category_id_count.fetch_add(1, atomic::Ordering::SeqCst) as u16;
-			compression_map.category_id_map.insert(category_id, id);
-			id
-		}
-	};
-	
-	CompressedTag {
-		timestamp: chrono::DateTime::parse_from_rfc3339(&tag.time).unwrap().timestamp_millis(),
-		origin_id,
-		brand_id,
-		category_id,
-		price: price as u32,
-		action: get_user_tag_type(&tag.action),
-	}
-}
 
 pub struct MinuteData {
 	pub product_id: Vec<u16>,
 	pub brand_id: Vec<u16>,
 	pub category_id: Vec<u16>,
 	pub price: Vec<u32>,
-	pub action: Vec<UserTagType>
+	pub action: Vec<UserAction>
 }
-
-
-pub async fn add_user_tag(user_tags: &mut UserTags, tag: UserTag, timestamp: i64) {
-	if user_tags.current_id < MAX_TAGS {
-		user_tags.tags.push(tag);
-		user_tags.timestamps.push(timestamp);
-		user_tags.current_id += 1;
-	} else {
-		let index = user_tags.current_id;
-		user_tags.tags[index] = tag;
-		user_tags.timestamps[index] = timestamp;
-		user_tags.current_id += 1;
-	}
-	if user_tags.current_id >= MAX_TAGS {
-		user_tags.current_id = 0;
-	}
-}
-
-impl Default for UserTags {
-	fn default() -> Self {
-		UserTags {
-			current_id: 0,
-			tags: Vec::new(),
-			timestamps: Vec::new(),
-		}
-	}
-}
-
 
 pub async fn data_saver(_minute_data_ptr: Arc<Database>, _rx: &mut mpsc::Receiver<CompressedTag>) {
 	// const LIMIT: usize = 32;

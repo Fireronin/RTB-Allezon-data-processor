@@ -2,7 +2,7 @@ use actix_web::{post, web, HttpResponse, Responder};
 use actix_web::http::StatusCode;
 
 use crate::AppState;
-use crate::types::{UserAction, UserTag, UserTagExternal};
+use crate::data::*;
 
 #[post("/user_tags")]
 pub async fn add_user_tags(data: web::Data<AppState>, req_body: String) -> impl Responder {
