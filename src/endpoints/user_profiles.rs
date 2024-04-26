@@ -1,10 +1,10 @@
-use actix_web::{post, web, HttpResponse, Responder};
+use std::fmt::{Display, Formatter};
+use actix_web::{HttpResponse, post, Responder, web};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 use crate::AppState;
-
-use crate::storage::{UserTag, MAX_TAGS, get_user_tags};
+use crate::types::{MAX_TAGS, UserTag, UserTagExternal};
+use crate::utils::{parse_time_range, TimeRange};
 
 #[derive(Deserialize, Serialize)]
 struct UserProfileRequest {
@@ -12,21 +12,31 @@ struct UserProfileRequest {
 	limit: Option<i32>
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
 struct UserProfileResponse {
 	cookie: String,
-	views: Vec<UserTag>,
-	buys: Vec<UserTag>,
+	views: Vec<UserTagExternal>,
+	buys: Vec<UserTagExternal>,
+}
+
+impl Display for UserProfileResponse {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "Response {}:\n\tviews: {:?}\n\tbuys {:?}\n", &self.cookie, &self.views, &self.buys)
+	}
+}
+
+pub fn filter_tags(mut user_tags: Vec<UserTag>, time_range: &TimeRange, limit: usize) -> Vec<UserTag> {
+	user_tags.sort();
+	let user_tags: Vec<UserTag> = user_tags.into_iter()
+		.filter(|tag| -> bool {
+			time_range.within(tag.time)
+		})
+		.collect();
+	user_tags.into_iter().rev().take(limit).collect()
 }
 
 #[post("/user_profiles/{cookie}")]
 pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileRequest>) -> impl Responder {
-	// println!("~~~~~~~~~~~~~~ User Profiles ~~~~~~~~~~~~~~");
-	// println!("req_body: {}", req_body);
-	// println!("cookie: {}", cookie);
-	// println!("time_range: {}", info.time_range);
-	// println!("limit: {}", info.limit.unwrap_or(-1));
-	
 	let cookie = cookie.into_inner();
 	
 	let limit = match info.limit {
@@ -34,46 +44,24 @@ pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: 
 		None => MAX_TAGS,
 	};
 	
-	
-	// split the time_range into start and end and parse it 2022-03-01T00:00:01.000_2022-03-01T00:00:01.619
-	let time_range: Vec<&str> = info.time_range.split("_").collect();
-	// add Z to the end of the time string to make it RFC3339 compliant
-	let time_range: Vec<String> = time_range.iter().map(|x| x.to_string() + "Z").collect();
-	let start_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[0].as_str()).unwrap().timestamp_millis();
-	let end_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[1].as_str()).unwrap().timestamp_millis();
-	
+	let time_range = parse_time_range(info.time_range.as_str());
 	
 	// get the user tags
-	let user_tags_views = data.user_tags_views.get(&cookie);
-	let user_tags_buys = data.user_tags_buys.get(&cookie);
-	
-	let tags_views = match user_tags_views {
-		Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)).await,
-		None => Vec::new(),
-	};
-	
-	let tags_buys = match user_tags_buys {
-		Some(user_tags) => get_user_tags(&user_tags, start_timestamp, end_timestamp, Some(limit)).await,
-		None => Vec::new(),
-	};
+	let (tags_views, tags_buys) = data.database.get_tags(&cookie);
 	
 	let response = UserProfileResponse {
-		cookie: cookie.clone(),
-		views: tags_views,
-		buys: tags_buys,
+		cookie,
+		views: filter_tags(tags_views, &time_range, limit).into_iter().map(|x| x.into()).collect(),
+		buys: filter_tags(tags_buys, &time_range, limit).into_iter().map(|x| x.into()).collect(),
 	};
 	
-	let response_json = json!(response);
-	let request_json: Value = serde_json::from_str(req_body.as_str()).unwrap();
-	
-	// println!("Returned {}", response_json.to_string());
-	// println!("Expected {}", request_json.to_string());
-	//
-	if request_json != response_json {
-		println!("####################");
-		println!("Returning {}, but expected {}", response_json.to_string(), request_json.to_string());
+	let expected_response = serde_json::from_str(req_body.as_str()).unwrap();
+	if response != expected_response {
+		println!("#####################################");
+		println!("User profile:\n{response}");
+		println!("Expected user profile:\n{expected_response}");
 	}
-	
+
 	HttpResponse::Ok().json(response)
 }
 

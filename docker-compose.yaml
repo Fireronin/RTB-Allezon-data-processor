@@ -1,0 +1,13 @@
+version: "3"
+services:
+  aerospike:
+    image: aerospike:ce-7.0.0.7
+    volumes:
+      - ./db/:/opt/aerospike/etc/
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "3002:3002"
+    environment:
+      - FEATURE_KEY_FILE=/opt/aerospike/etc/features.conf
+      - APLICATION_KEY_FILE=/opt/aerospike/etc/aerospike.conf

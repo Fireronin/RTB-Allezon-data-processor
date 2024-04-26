@@ -1,9 +1,11 @@
-use std::{cmp::min, sync::atomic};
 use std::sync::Arc;
+use std::sync::atomic;
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+
+use crate::database::Database;
 
 pub const MAX_TAGS: usize = 200;
 
@@ -136,26 +138,6 @@ pub async fn add_user_tag(user_tags: &mut UserTags, tag: UserTag, timestamp: i64
 	}
 }
 
-pub async fn get_user_tags(user_tags: &UserTags, start_timestamp: i64, end_timestamp: i64, limit: Option<usize>) -> Vec<UserTag> {
-	let mut tags = Vec::new();
-	let mut count = 0;
-	// iterate in reverse order from current_id to 0 in loop 1 and from MAX_TAGS to current_id+1 in loop 2
-	// create combined iterator current_id to 0 and MAX_TAGS to current_id+1
-	let iter = (0..user_tags.current_id)
-		.rev()
-		.chain((user_tags.current_id..min(MAX_TAGS, user_tags.tags.len())).rev());
-	for i in iter {
-		if count >= limit.unwrap_or(MAX_TAGS) {
-			break;
-		}
-		if user_tags.timestamps[i] >= start_timestamp && user_tags.timestamps[i] < end_timestamp {
-			tags.push(user_tags.tags[i].clone());
-			count += 1;
-		}
-	}
-	tags
-}
-
 impl Default for UserTags {
 	fn default() -> Self {
 		UserTags {
@@ -167,25 +149,24 @@ impl Default for UserTags {
 }
 
 
-pub async fn data_saver(minute_data_ptr: Arc<DashMap<i64, MinuteData>>, rx: &mut mpsc::Receiver<CompressedTag>) {
-	const LIMIT: usize = 32;
-	loop {
-		let mut buffer = Vec::new();
-		let _ = rx.recv_many(&mut buffer, LIMIT).await;
-		for tag in buffer.iter() {
-			minute_data_ptr.entry(tag.timestamp / 60000).or_insert_with(|| MinuteData {
-				product_id: Vec::new(),
-				brand_id: Vec::new(),
-				category_id: Vec::new(),
-				price: Vec::new(),
-				action: Vec::new(),
-			});
-			minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().product_id.push(tag.origin_id);
-			minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().brand_id.push(tag.brand_id);
-			minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().category_id.push(tag.category_id);
-			minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().price.push(tag.price);
-			minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().action.push(tag.action.clone());
-			//println!("Received tag: {:?}", tag);
-		}
-	}
+pub async fn data_saver(_minute_data_ptr: Arc<Database>, _rx: &mut mpsc::Receiver<CompressedTag>) {
+	// const LIMIT: usize = 32;
+	// loop {
+	// 	let mut buffer = Vec::new();
+	// 	let _ = rx.recv_many(&mut buffer, LIMIT).await;
+	// 	for tag in buffer.iter() {
+	// 		minute_data_ptr.entry(tag.timestamp / 60000).or_insert_with(|| MinuteData {
+	// 			product_id: Vec::new(),w
+	// 			brand_id: Vec::new(),
+	// 			category_id: Vec::new(),
+	// 			price: Vec::new(),
+	// 			action: Vec::new(),
+	// 		});
+	// 		minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().product_id.push(tag.origin_id);
+	// 		minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().brand_id.push(tag.brand_id);
+	// 		minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().category_id.push(tag.category_id);
+	// 		minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().price.push(tag.price);
+	// 		minute_data_ptr.get_mut(&(tag.timestamp / 60000)).unwrap().action.push(tag.action.clone());
+	// 	}
+	// }
 }
