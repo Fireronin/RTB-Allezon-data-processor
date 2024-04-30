@@ -51,7 +51,7 @@ mod tests {
 		let bin_name = "bin";
 		let (k, v) = (as_val!("c"), as_val!(3));
 		let op = maps::put(&mpolicy, bin_name, &k, &v);
-		let rec = client.operate(&wpolicy, &key, &[op]).unwrap();
+		let _rec = client.operate(&wpolicy, &key, &[op]).unwrap();
 		
 		let key_c: aerospike::Value = as_val!("c");
 		let val = maps::get_by_key(bin_name, &key_c, MapReturnType::Value);

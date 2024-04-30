@@ -12,16 +12,13 @@ pub async fn add_user_tags(data: web::Data<AppState>, req_body: String) -> impl 
 	};
 
 	match UserAction::try_from(&user_tag.action) {
-		Ok(user_action) => data.database.add_user_tag(user_tag, user_action),
+		Ok(user_action) => data.database.add_user_tag(&user_tag, user_action),
 		Err(_) => return HttpResponse::BadRequest().body("Invalid action"),
 	}
 	
-	// match data.tag_sender.send(compress_tag(&user_tag, &data.compression_mappings)).await {
-	// 	Ok(_) => {},
-	// 	Err(_) => {
-	// 		println!("Error sending tag to channel");
-	// 	}
-	// }
+	if let Err(err) = data.tag_sender.send(user_tag).await {
+		return HttpResponse::InternalServerError().body(err.to_string());
+	}
 	
 	HttpResponse::Ok().status(StatusCode::NO_CONTENT).finish()
 }

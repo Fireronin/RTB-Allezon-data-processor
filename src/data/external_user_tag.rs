@@ -16,7 +16,7 @@ impl Into<UserTag> for UserTagExternal {
 	fn into(self) -> UserTag {
 		UserTag {
 			product_info: self.product_info,
-			time: time::parse_timestamp(self.time.as_str()),
+			time: time::parse_timestamp(self.time.as_str()).unwrap(),
 			time_string: self.time,
 			cookie: self.cookie,
 			country: self.country,

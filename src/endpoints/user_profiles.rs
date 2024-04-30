@@ -44,7 +44,7 @@ pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: 
 		None => MAX_TAGS,
 	};
 	
-	let time_range = parse_time_range(info.time_range.as_str());
+	let time_range = TimeRange::new(info.time_range.as_str()).unwrap();
 	
 	// get the user tags
 	let (tags_views, tags_buys) = data.database.get_tags(&cookie);
