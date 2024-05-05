@@ -73,9 +73,9 @@ pub async fn aggregates(
 	
 	let time_range = TimeRange::new(request.time_range.as_str()).unwrap();
 	
-	let tags = data.database.get_minute_aggregate(&time_range);
+	let tags = data.database.get_minute_aggregate(&time_range).await;
 	let action = UserAction::try_from(&request.action).unwrap();
-	let compression = data.database.compress(request.category_id.as_ref(), request.origin.as_ref(), request.brand_id.as_ref());
+	let compression = data.database.compress(request.category_id.as_ref(), request.origin.as_ref(), request.brand_id.as_ref()).await;
 	
 	let result = spool(tags, action, compression);
 	

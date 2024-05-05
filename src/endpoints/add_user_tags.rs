@@ -14,7 +14,7 @@ pub async fn add_user_tags(data: web::Data<AppState>, req_body: String) -> impl 
 	match UserAction::try_from(&user_tag.action) {
 		Ok(user_action) => data.database.add_user_tag(&user_tag, user_action),
 		Err(_) => return HttpResponse::BadRequest().body("Invalid action"),
-	}
+	}.await;
 	
 	if let Err(err) = data.tag_sender.send(user_tag).await {
 		return HttpResponse::InternalServerError().body(err.to_string());

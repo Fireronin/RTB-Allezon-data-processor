@@ -24,7 +24,7 @@ pub struct AppState {
 async fn main() -> std::io::Result<()> {
 	let (tx, mut rx) = mpsc::channel::<UserTag>(128);
 	
-	let database = Arc::new(Database::new());
+	let database = Arc::new(Database::new().await.unwrap());
 	let database_clone = database.clone();
 	
 	// split control flow into two tasks
@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
 				.service(add_user_tags)
 				.service(user_profiles)
 				.service(aggregates)
-		}).bind(("10.112.103.101", 8083))
+		}).bind(("10.0.0.30", 8083))
 			.expect("Creation of server failed")
 			.run()
 			.await
@@ -52,7 +52,7 @@ async fn main() -> std::io::Result<()> {
 			let mut buffer = Vec::new();
 			let _ = rx.recv_many(&mut buffer, LIMIT).await;
 			for tag in buffer {
-				database_clone.add_minute(tag);
+				database_clone.add_minute(tag).await;
 			}
 		}
 	});

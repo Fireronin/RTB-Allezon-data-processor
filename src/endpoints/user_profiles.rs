@@ -36,7 +36,7 @@ pub fn filter_tags(mut user_tags: Vec<UserTag>, time_range: &TimeRange, limit: u
 }
 
 #[post("/user_profiles/{cookie}")]
-pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileRequest>) -> impl Responder {
+pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileRequest>) -> impl Responder {
 	let cookie = cookie.into_inner();
 	
 	let limit = match info.limit {
@@ -47,7 +47,7 @@ pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: 
 	let time_range = TimeRange::new(info.time_range.as_str()).unwrap();
 	
 	// get the user tags
-	let (tags_views, tags_buys) = data.database.get_tags(&cookie);
+	let (tags_views, tags_buys) = data.database.get_tags(&cookie).await;
 	
 	let response = UserProfileResponse {
 		cookie,
@@ -55,12 +55,12 @@ pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: 
 		buys: filter_tags(tags_buys, &time_range, limit).into_iter().map(|x| x.into()).collect(),
 	};
 	
-	let expected_response = serde_json::from_str(req_body.as_str()).unwrap();
-	if response != expected_response {
-		println!("#####################################");
-		println!("User profile:\n{response}");
-		println!("Expected user profile:\n{expected_response}");
-	}
+	// let expected_response = serde_json::from_str(req_body.as_str()).unwrap();
+	// if response != expected_response {
+	// 	println!("#####################################");
+	// 	println!("User profile:\n{response}");
+	// 	println!("Expected user profile:\n{expected_response}");
+	// }
 
 	HttpResponse::Ok().json(response)
 }

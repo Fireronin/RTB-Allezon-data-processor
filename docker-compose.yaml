@@ -11,3 +11,16 @@ services:
     environment:
       - FEATURE_KEY_FILE=/opt/aerospike/etc/features.conf
       - APLICATION_KEY_FILE=/opt/aerospike/etc/aerospike.conf
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    entrypoint:
+      - /surreal
+      - start
+      - --auth
+      - --user
+      - root
+      - --pass
+      - root
+      - memory
+    ports:
+      - "8000:8000"

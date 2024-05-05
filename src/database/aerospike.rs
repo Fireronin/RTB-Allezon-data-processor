@@ -5,10 +5,10 @@ use aerospike::operations::{lists, MapOrder, maps, Operation};
 use aerospike::operations::cdt_context::ctx_map_key_create;
 use aerospike::operations::lists::{ListOrderType, ListPolicy, ListReturnType, ListWriteFlags};
 use aerospike::Value::{Int, List};
-use dashmap::DashMap;
 
 use crate::data::*;
 use crate::data::time::TimeRange;
+use crate::database::compression_cache::CompressionMappings;
 
 /*
 namespace aero {
@@ -39,13 +39,6 @@ namespace aero {
 }
 */
 
-#[derive(Default)]
-struct CompressionMappings {
-	pub origin_id_map: DashMap<String, u16>,
-	pub brand_id_map: DashMap<String, u16>,
-	pub category_id_map: DashMap<String, u16>,
-}
-
 pub struct Database {
 	client: Client,
 	write_policy: WritePolicy,
@@ -72,7 +65,7 @@ impl Database {
 	
 	const EMPTY_KEY: &'static str = "empty";
 	
-	pub fn new() -> Self {
+	pub async fn new() -> Self {
 		let client_policy = ClientPolicy::default();
 		let hosts = env::var("AEROSPIKE_HOSTS")
 			.unwrap_or(String::from("127.0.0.1:3000"));
@@ -198,20 +191,7 @@ impl Database {
 	}
 	
 	pub fn compress(&self, origin: Option<&String>, brand: Option<&String>, category: Option<&String>) -> Compression {
-		let mut out = Compression::default();
-		
-		let get_from_local = |store: &DashMap<String, u16>, option: Option<&String>| -> Option<u16> {
-			if let Some(str) = option {
-				let x =  store.get(str);
-				x.map(|v| *v.value())
-			} else {
-				None
-			}
-		};
-
-		out.origin_id = get_from_local(&self.local_mappings_cache.origin_id_map, origin);
-		out.brand_id = get_from_local(&self.local_mappings_cache.brand_id_map, brand);
-		out.category_id = get_from_local(&self.local_mappings_cache.category_id_map, category);
+		let mut out = self.local_mappings_cache.try_compress(origin, brand, category);
 		
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
 		let mut operations = vec![];
