@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
 				.service(add_user_tags)
 				.service(user_profiles)
 				.service(aggregates)
-		}).bind(("10.0.0.30", 8083))
+		}).bind(("10.112.103.101", 8083))
 			.expect("Creation of server failed")
 			.run()
 			.await

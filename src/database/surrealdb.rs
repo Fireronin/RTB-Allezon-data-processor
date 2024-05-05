@@ -10,7 +10,7 @@ pub struct Database {
 
 impl Database {
 	pub async fn new() -> Result<Self, anyhow::Error> {
-		let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
+		let db = Surreal::new::<Ws>("127.0.0.1:8080").await?;
 		
 		// Signin as a namespace, database, or root user
 		db.signin(Root {
