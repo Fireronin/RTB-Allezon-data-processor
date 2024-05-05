@@ -1,4 +1,4 @@
-mod aerospike;
+// mod aerospike;
 mod surrealdb;
 mod compression_cache;
 

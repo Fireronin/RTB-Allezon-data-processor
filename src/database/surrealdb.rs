@@ -1,16 +1,27 @@
+use serde::Deserialize;
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
+use surrealdb::sql::Thing;
 use surrealdb::Surreal;
 use crate::data::{CompressedTag, Compression, UserAction, UserTag};
 use crate::data::time::TimeRange;
+use crate::database::compression_cache::CompressionMappings;
 
 pub struct Database {
 	db: Surreal<Client>,
+	compression_cache: CompressionMappings,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserTagRecord {
+	#[allow(dead_code)]
+	id: Thing,
+	tags: Vec<UserTag>
 }
 
 impl Database {
 	pub async fn new() -> Result<Self, anyhow::Error> {
-		let db = Surreal::new::<Ws>("127.0.0.1:8000").await?;
+		let db = Surreal::new::<Ws>("127.0.0.1:8080").await?;
 		
 		// Signin as a namespace, database, or root user
 		db.signin(Root {
@@ -27,19 +38,21 @@ USE DATABASE test;
 -- TABLE: tags
 -- ------------------------------
 
-DEFINE FUNCTION fn::push_and_keep_size($arr: array<string>, $v: string) {
-	IF array::len($arr) = 100 THEN
-		RETURN array::push(array::remove($arr, 0), $v);
-	ELSE
-		RETURN array::push($arr, $v);
-	END;
+DEFINE FUNCTION fn::push_and_keep_size($arr: option<array<object>>, $v: object) {
+    RETURN IF type::is::none($arr) THEN
+        <array<object, 100>>[$v]
+    ELSE IF array::len($arr) = 100 THEN
+        array::push(array::remove($arr, 0), $v)
+    ELSE
+        array::push($arr, $v)
+    END;
 };
 
-DEFINE TABLE view_tags SCHEMAFULL;
-DEFINE TABLE buy_tags SCHEMAFULL;
+DEFINE TABLE view_tags SCHEMALESS;
+DEFINE TABLE buy_tags SCHEMALESS;
 
-DEFINE FIELD tags ON TABLE view_tags TYPE array<string, 100>;
-DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
+DEFINE FIELD tags ON TABLE view_tags TYPE array<object, 100>;
+DEFINE FIELD tags ON TABLE buy_tags TYPE array<object, 100>;
 "
 		).await?;
 		
@@ -47,6 +60,7 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 		db.use_ns("test").use_db("test").await?;
 		Ok(Self {
 			db,
+			compression_cache: CompressionMappings::default(),
 		})
 	}
 	
@@ -55,34 +69,46 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 			UserAction::VIEW => "view_tags",
 			UserAction::BUY => "buy_tags",
 		};
-		let query = format!(
-			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {});",
-			&tag.cookie,
-			serde_json::to_string(&tag).unwrap());
-		self.db.query(query).await.unwrap();
+
+		let query_string = format!("UPDATE {}:{} SET tags = fn::push_and_keep_size(tags, $value);", table, &tag.cookie);
+
+		let result = self.db.query(query_string)
+			.bind(("value", &tag))
+			.await
+			.unwrap();
+		// println!("Add tag: {:?}", result);
 	}
-	
+
 	pub async fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
-		let view_tags = self.db.select(("view_tags", cookie)).await.unwrap().unwrap();
-		let buy_tags = self.db.select(("buy_tags", cookie)).await.unwrap().unwrap();
+		let view_tags: Result<Option<UserTagRecord>, surrealdb::Error> = self.db.select(("view_tags", cookie)).await;
+		let buy_tags: Result<Option<UserTagRecord>, surrealdb::Error> = self.db.select(("buy_tags", cookie)).await;
+
+		// println!("Get view tags {:?}", view_tags);
+		// println!("Get buy tags {:?}", buy_tags);
+
+		let mapper = |record: Option<UserTagRecord>| -> Vec<UserTag> {
+			record.map(|r| {
+				r.tags
+			}).unwrap_or(vec![])
+		};
+
+		let view_tags = mapper(view_tags.unwrap());
+		let buy_tags = mapper(buy_tags.unwrap());
+
 		(view_tags, buy_tags)
 	}
 	
-	pub async fn add_minute(&self, tag: UserTag) {
+	pub async fn add_minute(&self, _tag: UserTag) {
 		// unimplemented!()
 	}
 	
-	pub async fn get_minute_aggregate(&self, time_range: &TimeRange) -> Vec<Vec<CompressedTag>> {
+	pub async fn get_minute_aggregate(&self, _time_range: &TimeRange) -> Vec<Vec<CompressedTag>> {
 		// unimplemented!()
 		vec![]
 	}
 	
 	pub async fn compress(&self, origin: Option<&String>, brand: Option<&String>, category: Option<&String>) -> Compression {
-		// unimplemented!()
-		Compression {
-			origin_id: None,
-			brand_id: None,
-			category_id: None,
-		}
+		self.compression_cache.try_compress(origin, brand, category)
+		// TODO
 	}
 }
