@@ -28,10 +28,10 @@ USE DATABASE test;
 -- ------------------------------
 
 DEFINE FUNCTION fn::push_and_keep_size($arr: array<string>, $v: string) {
-	IF array::len($arr) = 100 THEN
-		RETURN array::push(array::remove($arr, 0), $v);
+	RETURN IF array::len($arr) = 100 THEN
+		array::push(array::remove($arr, 0), $v)
 	ELSE
-		RETURN array::push($arr, $v);
+		array::push($arr, $v)
 	END;
 };
 
@@ -56,7 +56,7 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 			UserAction::BUY => "buy_tags",
 		};
 		let query = format!(
-			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {});",
+			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {}) RETURN NONE;",
 			&tag.cookie,
 			serde_json::to_string(&tag).unwrap());
 		let result = self.db.query(query).await.unwrap();
