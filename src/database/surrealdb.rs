@@ -28,11 +28,13 @@ USE DATABASE test;
 -- ------------------------------
 
 DEFINE FUNCTION fn::push_and_keep_size($arr: array<string>, $v: string) {
-	RETURN IF array::len($arr) = 100 THEN
-		array::push(array::remove($arr, 0), $v)
-	ELSE
-		array::push($arr, $v)
-	END;
+    RETURN IF type::is::none($arr) THEN
+        <array<string, 100>>[$v]
+    ELSE IF array::len($arr) = 100 THEN
+        array::push(array::remove($arr, 0), $v)
+    ELSE
+        array::push($arr, $v)
+    END;
 };
 
 DEFINE TABLE view_tags SCHEMAFULL;
