@@ -59,7 +59,8 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {});",
 			&tag.cookie,
 			serde_json::to_string(&tag).unwrap());
-		self.db.query(query).await.unwrap();
+		let result = self.db.query(query).await.unwrap();
+		println!("Add response: {:?}", result);
 	}
 	
 	pub async fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
