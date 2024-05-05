@@ -27,7 +27,7 @@ USE DATABASE test;
 -- TABLE: tags
 -- ------------------------------
 
-DEFINE FUNCTION fn::push_and_keep_size($arr: array<string>, $v: string) {
+DEFINE FUNCTION fn::push_and_keep_size($arr: option<array<string>>, $v: string) {
     RETURN IF type::is::none($arr) THEN
         <array<string, 100>>[$v]
     ELSE IF array::len($arr) = 100 THEN
