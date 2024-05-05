@@ -1,11 +1,21 @@
+use serde::Deserialize;
 use surrealdb::engine::remote::ws::{Client, Ws};
+use surrealdb::key::root::us::Us;
 use surrealdb::opt::auth::Root;
+use surrealdb::sql::Thing;
 use surrealdb::Surreal;
 use crate::data::{CompressedTag, Compression, UserAction, UserTag};
 use crate::data::time::TimeRange;
 
 pub struct Database {
 	db: Surreal<Client>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserTagRecord {
+	#[allow(dead_code)]
+	id: Thing,
+	tags: Vec<String>
 }
 
 impl Database {
@@ -57,20 +67,38 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 			UserAction::VIEW => "view_tags",
 			UserAction::BUY => "buy_tags",
 		};
+
+
 		let query = format!(
-			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {});",
+			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, '{}') RETURN NONE;",
 			&tag.cookie,
 			serde_json::to_string(&tag).unwrap());
 		let result = self.db.query(query).await.unwrap();
-		println!("Add Tags: {:?}", result);
+		// println!("Add Tags: {:?}", result);
 	}
-	
+
 	pub async fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
-		let view_tags = self.db.select(("view_tags", cookie)).await;
-		let buy_tags = self.db.select(("buy_tags", cookie)).await;
-		println!("Get Tags: {:?}", view_tags);
-		println!("Buy Tags: {:?}", buy_tags);
-		(view_tags.unwrap().unwrap(), buy_tags.unwrap().unwrap())
+		let view_tags: Result<Option<UserTagRecord>, surrealdb::Error> = self.db.select(("view_tags", cookie)).await;
+		let buy_tags: Result<Option<UserTagRecord>, surrealdb::Error> = self.db.select(("buy_tags", cookie)).await;
+
+		// println!("Get view tags {:?}", view_tags);
+		// println!("Get buy tags {:?}", buy_tags);
+
+		let mapper = |record: Option<UserTagRecord>| -> Vec<UserTag> {
+			record.map(|r| {
+				r.tags.into_iter()
+					.map(|x: String| {
+						println!("Got tag {x}");
+						serde_json::from_str(x.as_str()).unwrap()
+					})
+					.collect()
+			}).unwrap_or(vec![])
+		};
+
+		let view_tags = mapper(view_tags.unwrap());
+		let buy_tags = mapper(buy_tags.unwrap());
+
+		(view_tags, buy_tags)
 	}
 	
 	pub async fn add_minute(&self, tag: UserTag) {
