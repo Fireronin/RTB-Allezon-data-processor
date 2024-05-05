@@ -61,14 +61,15 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 			"UPDATE {table}:{} SET tags = fn::push_and_keep_size(tags, {}) RETURN NONE;",
 			&tag.cookie,
 			serde_json::to_string(&tag).unwrap());
-		let result = self.db.query(query).await.unwrap();
-		println!("Add response: {:?}", result);
+		self.db.query(query).await.unwrap();
 	}
 	
 	pub async fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
-		let view_tags = self.db.select(("view_tags", cookie)).await.unwrap().unwrap();
-		let buy_tags = self.db.select(("buy_tags", cookie)).await.unwrap().unwrap();
-		(view_tags, buy_tags)
+		let view_tags = self.db.select(("view_tags", cookie)).await.unwrap();
+		let buy_tags = self.db.select(("buy_tags", cookie)).await.unwrap();
+		println!("Get Tags: {:?}", view_tags);
+		println!("Buy Tags: {:?}", buy_tags);
+		(view_tags.unwrap(), buy_tags.unwrap())
 	}
 	
 	pub async fn add_minute(&self, tag: UserTag) {
