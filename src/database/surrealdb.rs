@@ -65,11 +65,11 @@ DEFINE FIELD tags ON TABLE buy_tags TYPE array<string, 100>;
 	}
 	
 	pub async fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
-		let view_tags = self.db.select(("view_tags", cookie)).await.unwrap();
-		let buy_tags = self.db.select(("buy_tags", cookie)).await.unwrap();
+		let view_tags = self.db.select(("view_tags", cookie)).await;
+		let buy_tags = self.db.select(("buy_tags", cookie)).await;
 		println!("Get Tags: {:?}", view_tags);
 		println!("Buy Tags: {:?}", buy_tags);
-		(view_tags.unwrap(), buy_tags.unwrap())
+		(view_tags.unwrap().unwrap(), buy_tags.unwrap().unwrap())
 	}
 	
 	pub async fn add_minute(&self, tag: UserTag) {
