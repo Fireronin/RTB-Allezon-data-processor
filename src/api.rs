@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::data::{Cookie, ProductInfo, UserAction, UserTagEvent};
+use crate::data::time::TimeRange;
 
 pub const MAX_TAGS: usize = 200;
 
@@ -21,15 +22,10 @@ pub struct AddUserProfileRequest {
 	pub tag: UserTagEvent,
 }
 
-struct GetUserProfileRequest {
-	cookie: Cookie,
-	time_range: String,
-	limit: i32,
-}
-
-pub struct GetUserProfileResponse {
-	pub view_events: Vec<UserTagEvent>,
-	pub buy_events: Vec<UserTagEvent>,
+pub struct GetUserProfileRequest {
+	pub cookie: Cookie,
+	pub time_range: TimeRange,
+	pub limit: usize,
 }
 
 pub struct GetAggregateRequest {

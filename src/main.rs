@@ -37,7 +37,7 @@ async fn main() -> std::io::Result<()> {
 					tag_sender: tx.clone(),
 				}))
 				.service(add_user_tags)
-				// .service(user_profiles)
+				.service(user_profiles)
 				// .service(aggregates)
 		}).bind(("10.112.103.101", 8083))
 			.expect("Creation of server failed")

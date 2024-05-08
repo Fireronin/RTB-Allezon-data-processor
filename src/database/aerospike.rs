@@ -141,7 +141,7 @@ impl Database for AerospikeDB {
 		}
 	}
 	
-	async fn get_user_profile(&self, cookie: &Cookie) -> GetUserProfileResponse {
+	async fn get_user_profile(&self, cookie: &Cookie) -> UserProfile {
 		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &cookie.0);
 		let get_view_operation = lists::get_by_index_range(&Self::VIEW_BIN, 0, ListReturnType::Values);
 		let get_buy_operation = lists::get_by_index_range(&Self::BUY_BIN, 0, ListReturnType::Values);
@@ -172,7 +172,7 @@ impl Database for AerospikeDB {
 			.and_then(value_to_user_tag_list)
 			.unwrap_or(vec![]);
 		
-		GetUserProfileResponse {
+		UserProfile {
 			view_events,
 			buy_events,
 		}

@@ -1,12 +1,13 @@
-use std::fmt::{Display, Formatter};
-use actix_web::{HttpResponse, post, Responder, web};
+use actix_web::{HttpResponse, post, Responder, web, Result};
+use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{ApiUserTag, GetUserProfileResponse};
+use crate::api::*;
 use crate::AppState;
 use crate::data::*;
 use crate::data::time::*;
-use crate::database::Database;
+use crate::database::{Database, Decompressor};
+use crate::endpoints::utils::IntoHttpError;
 
 #[derive(Deserialize, Serialize)]
 struct UserProfileApiRequest {
@@ -21,61 +22,39 @@ struct UserProfileApiResponse {
 	buys: Vec<ApiUserTag>,
 }
 
-impl Display for UserProfileApiResponse {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "Response {}:\n\tviews: {:?}\n\tbuys {:?}\n", &self.cookie, &self.views, &self.buys)
-	}
-}
-
-fn filter_tags<T: Database>(db: &T, mut user_tags: Vec<UserTagEvent>, request: UserProfileRequest) -> Vec<ApiUserTag> {
+async fn filter_tags<T: Decompressor<UserTagEvent>>(decompressor: &T, mut user_tags: Vec<UserTagEvent>, request: &GetUserProfileRequest, action: UserAction) -> Vec<ApiUserTag> {
 	user_tags.sort();
-	let user_tags: Vec<ApiUserTag> = user_tags.into_iter()
+	let filtered_tags: Vec<UserTagEvent> = user_tags.into_iter()
 		.filter(|tag| -> bool {
 			request.time_range.within(tag.time)
 		})
-		.map(|tag| {
-			let decompressed = db.decompress_event_tag(&tag.compressed_data).await;
-			ApiUserTag {
-				product_info: ProductInfo {
-					product_id: decompressed.product_id,
-					brand_id: decompressed.brand_id,
-					category_id: decompressed.category_id,
-					price: tag.price,
-				},
-				time: timestamp_to_str(tag.time),
-				cookie: request.cookie.0,
-				country: decompressed.country,
-				device: tag.device,
-				action: "".to_string(),
-				origin: "".to_string(),
-			}
-		})
 		.collect();
-	user_tags.into_iter().rev().take(limit).collect()
+	let mut tags = vec![];
+	for tag in filtered_tags {
+		tags.push(tag.decompress(decompressor, (request.cookie.clone(), action)).await);
+	}
+	tags.into_iter().rev().take(request.limit).collect()
 }
 
 #[post("/user_profiles/{cookie}")]
-pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> impl Responder {
-	let cookie = Cookie(cookie.into_inner());
-	
-	let limit = match info.limit {
-		Some(limit) => limit as usize,
-		None => MAX_TAGS,
+pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> Result<impl Responder> {
+	let request = GetUserProfileRequest {
+		cookie: Cookie(cookie.into_inner()),
+		time_range: TimeRange::new(info.time_range.as_str()).map_error(StatusCode::BAD_REQUEST)?,
+		limit: match info.limit {
+			Some(limit) => limit as usize,
+			None => MAX_TAGS,
+		},
 	};
-	
-	let time_range = TimeRange::new(info.time_range.as_str()).unwrap();
 	
 	// get the user tags
-	let GetUserProfileResponse {
-		view_events, buy_events: buy_tags
-	} = data.database.get_user_profile(&cookie).await;
-	
-	let response = UserProfileApiResponse {
-		cookie: cookie.0.clone(),
-		views: filter_tags(view_events, &time_range, limit).into_iter().map(|x| x.into()).collect(),
-		buys: filter_tags(buy_tags, &time_range, limit).into_iter().map(|x| x.into()).collect(),
+	let user_profile = data.database.get_user_profile(&request.cookie).await;
+	let response = 	UserProfileApiResponse {
+		cookie: request.cookie.0.clone(),
+		views: filter_tags(data.database.as_ref(), user_profile.view_events, &request, UserAction::VIEW).await,
+		buys: filter_tags(data.database.as_ref(), user_profile.buy_events, &request, UserAction::BUY).await,
 	};
-	
-	HttpResponse::Ok().json(response)
+
+	Ok(HttpResponse::Ok().json(response))
 }
 

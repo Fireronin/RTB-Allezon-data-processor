@@ -6,7 +6,7 @@ pub trait Database {
 	async fn new() -> Self;
 	async fn add_user_event(&self, request: AddUserProfileRequest);
 	/// Get last MAX_TAGS buy tags and view tags for a given cookie
-	async fn get_user_profile(&self, cookie: &Cookie) -> GetUserProfileResponse;
+	async fn get_user_profile(&self, cookie: &Cookie) -> UserProfile;
 	async fn add_aggregate_event(&self, tag: &AggregateTagEvent);
 	async fn get_aggregate(&self, time_range: &TimeRange) -> GetAggregateResponse;
 }
