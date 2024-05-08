@@ -1,4 +1,4 @@
-use chrono::ParseError;
+use chrono::{ParseError, SecondsFormat};
 
 pub struct TimeRange {
 	pub start: i64,
@@ -27,4 +27,9 @@ impl TimeRange {
 
 pub fn parse_timestamp(timestamp: &str) -> Result<i64, ParseError> {
 	Ok(chrono::DateTime::parse_from_rfc3339(timestamp)?.timestamp_millis())
+}
+
+pub fn timestamp_to_str(timestamp: i64) -> String {
+	chrono::DateTime::from_timestamp_millis(timestamp)
+		.unwrap().to_rfc3339_opts(SecondsFormat::Millis, true)
 }

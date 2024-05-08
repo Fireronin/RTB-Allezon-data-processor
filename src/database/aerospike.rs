@@ -1,14 +1,14 @@
 use std::env;
 
-use aerospike::{as_key, as_val, Client, ClientPolicy, Expiration, Key, MapReturnType, Record, Value, WritePolicy};
-use aerospike::operations::{lists, MapOrder, maps, Operation};
-use aerospike::operations::cdt_context::ctx_map_key_create;
+use aerospike::{as_key, as_val, Client, ClientPolicy, Expiration, Key, Record, Value, WritePolicy};
+use aerospike::operations::{lists, Operation};
 use aerospike::operations::lists::{ListOrderType, ListPolicy, ListReturnType, ListWriteFlags};
 use aerospike::Value::{Int, List};
 
+use crate::api::*;
 use crate::data::*;
 use crate::data::time::TimeRange;
-use crate::database::compression_cache::CompressionMappings;
+use crate::database::{Compressor, Database};
 
 /*
 namespace aero {
@@ -34,21 +34,21 @@ namespace aero {
 				origin_id: list str
 				brand_id: list str
 				category_id: list str
+				product_id: list str
+				country: list str
 		}
 	}
 }
 */
 
-pub struct Database {
+pub struct AerospikeDB {
 	client: Client,
 	write_policy: WritePolicy,
 	insert_unique_list_policy: ListPolicy,
 	list_policy: ListPolicy,
-	
-	local_mappings_cache: CompressionMappings,
 }
 
-impl Database {
+impl AerospikeDB {
 	const NAMESPACE: &'static str = "test";
 	// tags
 	const TAG_SET: &'static str = "tags";
@@ -62,10 +62,40 @@ impl Database {
 	const ORIGIN_ID_BIN: &'static str = "origin_id";
 	const BRAND_ID_BIN: &'static str = "brand_id";
 	const CATEGORY_ID_BIN: &'static str = "category_id";
+	const PRODUCT_ID_BIN: &'static str = "product_id";
+	const COUNTRY_BIN: &'static str = "country";
 	
 	const EMPTY_KEY: &'static str = "empty";
 	
-	pub async fn new() -> Self {
+	fn operate(&self, key: &Key, ops: &[Operation]) -> Record {
+		match self.client.operate(&self.write_policy, key, ops) {
+			Ok(record) => record,
+			Err(err) => panic!("Operation failed {:?}:\n{}", key, err),
+		}
+	}
+	
+	fn add_or_get_mapping(&self, value: &String, bin: &'static str, operations: &mut Vec<(&str, Value)>) {
+		operations.push((bin, as_val!(value)));
+	}
+	
+	fn retrieve_value_from_mapping_result(bin: &str, result: &Record) -> i64 {
+		if let List(results_for_bin) = result.bins.get(bin).expect(format!("No bin named {} found", bin).as_str()) {
+			let get_result_value = results_for_bin.get(1).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
+			if let List(get_result_list) = get_result_value {
+				let result_value = get_result_list.get(0).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
+				if let Int(out) = result_value {
+					return *out;
+				}
+				unreachable!("Aerospike got a mindfuck and returned sth else than an int of return value of a get_by_value (expecting an int index)")
+			}
+			unreachable!("Aerospike got a mindfuck and returned sth else than a list of return value of a get_by_value (expecting list of indexes)")
+		}
+		unreachable!("Aerospike got a mindfuck and returned sth else than a list of return values for a list of operations")
+	}
+}
+
+impl Database for AerospikeDB {
+	async fn new() -> Self {
 		let client_policy = ClientPolicy::default();
 		let hosts = env::var("AEROSPIKE_HOSTS")
 			.unwrap_or(String::from("127.0.0.1:3000"));
@@ -89,22 +119,14 @@ impl Database {
 				flags: ListWriteFlags::AddUnique,
 			},
 			list_policy: ListPolicy::new(ListOrderType::Unordered, ListWriteFlags::Default),
-			local_mappings_cache: CompressionMappings::default(),
 		}
 	}
 	
-	fn operate(&self, key: &Key, ops: &[Operation]) -> Record {
-		match self.client.operate(&self.write_policy, key, ops) {
-			Ok(record) => record,
-			Err(err) => panic!("Operation failed {:?}:\n{}", key, err),
-		}
-	}
-	
-	pub fn add_user_tag(&self, tag: &UserTag, action: UserAction) {
-		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &tag.cookie);
-		let value = as_val!(serde_json::to_string(&tag).unwrap());
+	async fn add_user_event(&self, request: AddUserProfileRequest) {
+		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &request.cookie.0);
+		let value = as_val!(serde_json::to_string(&request.tag).unwrap());
 		
-		let action = match action {
+		let action = match request.action {
 			UserAction::VIEW => Self::VIEW_BIN,
 			UserAction::BUY => Self::BUY_BIN,
 		};
@@ -119,21 +141,21 @@ impl Database {
 		}
 	}
 	
-	pub fn get_tags(&self, cookie: &String) -> (Vec<UserTag>, Vec<UserTag>) {
-		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, cookie);
+	async fn get_user_profile(&self, cookie: &Cookie) -> GetUserProfileResponse {
+		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &cookie.0);
 		let get_view_operation = lists::get_by_index_range(&Self::VIEW_BIN, 0, ListReturnType::Values);
 		let get_buy_operation = lists::get_by_index_range(&Self::BUY_BIN, 0, ListReturnType::Values);
 		
 		let result = self.operate(&key, &vec![get_view_operation, get_buy_operation]);
 		
-		let value_to_user_tag = |v| -> Option<UserTag> {
+		let value_to_user_tag = |v| -> Option<UserTagEvent> {
 			if let Value::String(str) = v {
 				serde_json::from_str(str.as_str()).ok()
 			} else {
 				None
 			}
 		};
-		let value_to_user_tag_list = |v: &Value| -> Option<Vec<UserTag>> {
+		let value_to_user_tag_list = |v: &Value| -> Option<Vec<UserTagEvent>> {
 			if let List(list) = v.clone() {
 				Some(list.into_iter()
 					.flat_map(value_to_user_tag)
@@ -143,121 +165,84 @@ impl Database {
 			}
 		};
 		
-		let view_list = result.bins.get(Self::VIEW_BIN)
+		let view_events = result.bins.get(Self::VIEW_BIN)
 			.and_then(value_to_user_tag_list)
 			.unwrap_or(vec![]);
-		let buy_list = result.bins.get(Self::BUY_BIN)
+		let buy_events = result.bins.get(Self::BUY_BIN)
 			.and_then(value_to_user_tag_list)
 			.unwrap_or(vec![]);
+		
+		GetUserProfileResponse {
+			view_events,
+			buy_events,
+		}
+	}
+	
+	async fn add_aggregate_event(&self, tag: &AggregateTagEvent) {
+		// let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
+		// let map_key = as_val!(tag.timestamp / 60000);
+		// let compressed_tag = AggregateTagEvent::new(
+		// 	self.compress(
+		// 		Some(&tag.origin),
+		// 		Some(&tag.product_info.brand_id),
+		// 		Some(&tag.product_info.category_id)), tag);
+		// let value = as_val!(serde_json::to_string(&compressed_tag).unwrap());
+		//
+		// let context = [ctx_map_key_create(map_key, MapOrder::KeyOrdered)];
+		// let add_operation = lists::append(&self.list_policy, Self::TAG_BIN, &value);
+		// let add_operation = add_operation.set_context(&context);
+		//
+		// let _ = self.operate(&key, &vec![add_operation]);
+		todo!()
+	}
+	
+	async fn get_aggregate(&self, time_range: &TimeRange) -> GetAggregateResponse {
+		// let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
+		// let start_key_range = as_val!(time_range.start / 60000);
+		// let end_key_range = as_val!(time_range.end / 60000);
+		//
+		// let get_tags = maps::get_by_key_range(
+		// 	&Self::TAG_BIN,
+		// 	&start_key_range,
+		// 	&end_key_range,
+		// 	MapReturnType::Value);
+		//
+		// let result = self.operate(&key, &vec![get_tags]);
+		//
+		// let tag_list = result.bins.get(Self::TAG_BIN);
+		//
+		// println!("Tag list {:?}", tag_list);
+		//
+		// tag_list
+		todo!()
+	}
+}
 
-		(view_list, buy_list)
-	}
-	
-	pub fn add_minute(&self, tag: UserTag) {
-		let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
-		let map_key = as_val!(tag.time / 60000);
-		let compressed_tag = CompressedTag::new(
-			self.compress(
-				Some(&tag.origin),
-				Some(&tag.product_info.brand_id),
-				Some(&tag.product_info.category_id)), tag);
-		let value = as_val!(serde_json::to_string(&compressed_tag).unwrap());
-		
-		let context = [ctx_map_key_create(map_key, MapOrder::KeyOrdered)];
-		let add_operation = lists::append(&self.list_policy, Self::TAG_BIN, &value);
-		let add_operation = add_operation.set_context(&context);
-		
-		let _ = self.operate(&key, &vec![add_operation]);
-	}
-	
-	pub fn get_minute_aggregate(&self, time_range: &TimeRange) -> Vec<Vec<CompressedTag>> {
-		let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
-		let start_key_range = as_val!(time_range.start / 60000);
-		let end_key_range = as_val!(time_range.end / 60000);
-		
-		let get_tags = maps::get_by_key_range(
-			&Self::TAG_BIN,
-			&start_key_range,
-			&end_key_range,
-			MapReturnType::Value);
-		
-		let result = self.operate(&key, &vec![get_tags]);
-		
-		let tag_list = result.bins.get(Self::TAG_BIN);
-		
-		println!("Tag list {:?}", tag_list);
-		
-		vec![]
-	}
-	
-	pub fn compress(&self, origin: Option<&String>, brand: Option<&String>, category: Option<&String>) -> Compression {
-		let mut out = self.local_mappings_cache.try_compress(origin, brand, category);
-		
+impl Compressor<UserTagEvent> for AerospikeDB {
+	async fn compress(&self, value: &ApiUserTag) -> UserTagEventCompressedData {
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
-		let mut operations = vec![];
 
-		let mut keys = vec![];
-		let mut add_or_get_from_remote = |option: &Option<&String>, bin: &'static str| {
-			if let &Some(v) = option {
-				keys.push((as_val!(v.clone()), bin));
-			}
-		};
+		let mut operation_stuff = vec![];
+		self.add_or_get_mapping(&value.product_info.product_id, Self::PRODUCT_ID_BIN, &mut operation_stuff);
+		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operation_stuff);
+		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operation_stuff);
+		self.add_or_get_mapping(&value.country, Self::COUNTRY_BIN, &mut operation_stuff);
+		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operation_stuff);
 		
-		if out.origin_id.is_none() {
-			add_or_get_from_remote(&origin, Self::ORIGIN_ID_BIN);
-		}
-		if out.brand_id.is_none() {
-			add_or_get_from_remote(&brand, Self::BRAND_ID_BIN);
-		}
-		if out.category_id.is_none() {
-			add_or_get_from_remote(&category, Self::CATEGORY_ID_BIN);
+		let mut operations = vec![];
+		for (bin, value) in operation_stuff.iter() {
+			operations.push(lists::append(&self.insert_unique_list_policy, bin, value));
+			operations.push(lists::get_by_value(bin, value, ListReturnType::Index))
 		}
 		
-		for (key, bin) in keys.iter() {
-			operations.push(lists::append(&self.insert_unique_list_policy, bin, key));
-			operations.push(lists::get_by_value(bin, key, ListReturnType::Index))
-		}
+		let result = self.operate(&key, &operations);
 		
-		if !operations.is_empty() {
-			let result = self.operate(&key, &operations);
-			let retrieve_value_from_result = |bin| -> u16 {
-				if let List(results_for_bin) = result.bins.get(bin).expect(format!("No bin named {} found", bin).as_str()) {
-					let get_result_value = results_for_bin.get(1).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
-					if let List(get_result_list) = get_result_value {
-						let result_value = get_result_list.get(0).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
-						if let Int(out) = result_value {
-							return *out as u16;
-						}
-						unreachable!("Aerospike got a mindfuck and returned sth else than an int of return value of a get_by_value (expecting an int index)")
-					}
-					unreachable!("Aerospike got a mindfuck and returned sth else than a list of return value of a get_by_value (expecting list of indexes)")
-				}
-				unreachable!("Aerospike got a mindfuck and returned sth else than a list of return values for a list of operations")
-			};
-			
-			if let Some(origin) = origin {
-				if out.origin_id.is_none() {
-					let v = retrieve_value_from_result(Self::ORIGIN_ID_BIN);
-					out.origin_id = Some(v);
-					self.local_mappings_cache.origin_id_map.insert(origin.clone(), v);
-				}
-			}
-			if let Some(brand) = brand {
-				if out.brand_id.is_none() {
-					let v = retrieve_value_from_result(Self::BRAND_ID_BIN);
-					out.brand_id = Some(v);
-					self.local_mappings_cache.brand_id_map.insert(brand.clone(), v);
-				}
-			}
-			if let Some(category) = category {
-				if out.category_id.is_none() {
-					let v = retrieve_value_from_result(Self::CATEGORY_ID_BIN);
-					out.category_id = Some(v);
-					self.local_mappings_cache.category_id_map.insert(category.clone(), v);
-				}
-			}
+		UserTagEventCompressedData {
+			product_id: AerospikeDB::retrieve_value_from_mapping_result(Self::PRODUCT_ID_BIN, &result) as u64,
+			brand_id: AerospikeDB::retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
+			category_id: AerospikeDB::retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
+			country: AerospikeDB::retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,
+			origin: AerospikeDB::retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
 		}
-		
-		out
 	}
 }

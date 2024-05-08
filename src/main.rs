@@ -3,28 +3,27 @@ use actix_web::{App, HttpServer, web};
 use futures::future::select;
 use tokio::sync::mpsc;
 
-use endpoints::add_user_tags::add_user_tags;
-use endpoints::aggregates::aggregates;
-use endpoints::user_profiles::user_profiles;
-use crate::data::UserTag;
+use endpoints::*;
+use crate::data::AggregateTagEvent;
 
-use crate::database::Database;
+use crate::database::{AerospikeDB, CachedDB, Database};
 
 mod endpoints;
 mod database;
 mod data;
 mod tests;
+pub mod api;
 
 pub struct AppState {
-	pub database: Arc<Database>,
-	pub tag_sender: mpsc::Sender<UserTag>,
+	pub database: Arc<CachedDB<AerospikeDB>>,
+	pub tag_sender: mpsc::Sender<AggregateTagEvent>,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-	let (tx, mut rx) = mpsc::channel::<UserTag>(128);
+	let (tx, mut rx) = mpsc::channel::<AggregateTagEvent>(128);
 	
-	let database = Arc::new(Database::new().await.unwrap());
+	let database = Arc::new(CachedDB::new().await);
 	let database_clone = database.clone();
 	
 	// split control flow into two tasks
@@ -38,8 +37,8 @@ async fn main() -> std::io::Result<()> {
 					tag_sender: tx.clone(),
 				}))
 				.service(add_user_tags)
-				.service(user_profiles)
-				.service(aggregates)
+				// .service(user_profiles)
+				// .service(aggregates)
 		}).bind(("10.112.103.101", 8083))
 			.expect("Creation of server failed")
 			.run()
@@ -52,7 +51,7 @@ async fn main() -> std::io::Result<()> {
 			let mut buffer = Vec::new();
 			let _ = rx.recv_many(&mut buffer, LIMIT).await;
 			for tag in buffer {
-				database_clone.add_minute(tag).await;
+				// database_clone.add_minute(tag).await;
 			}
 		}
 	});

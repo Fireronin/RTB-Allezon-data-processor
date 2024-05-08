@@ -7,6 +7,7 @@ use serde_querystring::DuplicateQS;
 use crate::AppState;
 use crate::data::*;
 use crate::data::time::TimeRange;
+use crate::database::Database;
 use crate::endpoints::aggregates::AggregateRequestType::{Count, Sum};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -73,7 +74,7 @@ pub async fn aggregates(
 	
 	let time_range = TimeRange::new(request.time_range.as_str()).unwrap();
 	
-	let tags = data.database.get_minute_aggregate(&time_range).await;
+	let tags = data.database.get_aggregate(&time_range).await;
 	let action = UserAction::try_from(&request.action).unwrap();
 	let compression = data.database.compress(request.category_id.as_ref(), request.origin.as_ref(), request.brand_id.as_ref()).await;
 	
@@ -138,9 +139,9 @@ fn eq_or_true(option: &Option<u16>, value: u16) -> bool {
 	option.map(|x| x == value).unwrap_or(true)
 }
 
-fn spool(data: Vec<Vec<CompressedTag>>,
+fn spool(data: Vec<Vec<AggregateTagEvent>>,
          action: UserAction,
-         compression: Compression) -> Vec<SpoolingResult> {
+         compression: AggregateCompressedRequest) -> Vec<SpoolingResult> {
 	data.into_par_iter().map(|minute_data|{
 		minute_data.iter().fold(SpoolingResult::default(), |mut result, tag| {
 			let correct_origin = eq_or_true(&compression.origin_id, tag.origin_id);

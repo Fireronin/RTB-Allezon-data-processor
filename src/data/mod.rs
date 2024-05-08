@@ -1,10 +1,10 @@
-mod user_tag;
-mod external_user_tag;
-mod compressed_tag;
+mod aggregate_event_tag;
 mod common;
 pub mod time;
+mod user_event_tag;
+mod compression;
 
-pub use user_tag::*;
-pub use external_user_tag::*;
-pub use compressed_tag::*;
+pub use aggregate_event_tag::*;
 pub use common::*;
+pub use user_event_tag::*;
+pub use compression::*;
