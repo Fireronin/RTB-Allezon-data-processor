@@ -1,14 +1,13 @@
-use crate::data::*;
+use crate::data::{AggregateTagEvent, Compress, Cookie, Decompress, UserAction, UserProfile, UserTagEvent};
 use crate::api::*;
-use crate::data::time::TimeRange;
 
 pub trait Database {
 	async fn new() -> Self;
-	async fn add_user_event(&self, request: AddUserProfileRequest);
+	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction);
 	/// Get last MAX_TAGS buy tags and view tags for a given cookie
 	async fn get_user_profile(&self, cookie: &Cookie) -> UserProfile;
-	async fn add_aggregate_event(&self, tag: &AggregateTagEvent);
-	async fn get_aggregate(&self, time_range: &TimeRange) -> GetAggregateResponse;
+	async fn add_aggregate_event(&self, timestamp: i64, tag: AggregateTagEvent);
+	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse;
 }
 
 /*

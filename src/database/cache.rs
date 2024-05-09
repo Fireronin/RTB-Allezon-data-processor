@@ -1,7 +1,7 @@
 use crate::api::*;
 use crate::data::*;
-use crate::data::time::TimeRange;
 use crate::database::{Compressor, Database, Decompressor};
+use crate::endpoints::GetAggregateApiRequest;
 
 pub struct CachedDB<T: Database> {
 	remote_db: T,
@@ -12,7 +12,7 @@ impl<T: Database> Database for CachedDB<T> {
 		todo!()
 	}
 	
-	async fn add_user_event(&self, request: AddUserProfileRequest) {
+	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction) {
 		todo!()
 	}
 	
@@ -20,11 +20,11 @@ impl<T: Database> Database for CachedDB<T> {
 		todo!()
 	}
 	
-	async fn add_aggregate_event(&self, tag: &AggregateTagEvent) {
+	async fn add_aggregate_event(&self, timestamp: i64, tag: AggregateTagEvent) {
 		todo!()
 	}
 	
-	async fn get_aggregate(&self, time_range: &TimeRange) -> GetAggregateResponse {
+	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse {
 		todo!()
 	}
 }
@@ -37,6 +37,18 @@ impl<T: Database> Compressor<UserTagEvent> for CachedDB<T> {
 
 impl<T: Database> Decompressor<UserTagEvent> for CachedDB<T> {
 	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
+		todo!()
+	}
+}
+
+impl<T: Database> Compressor<AggregateTagEvent> for CachedDB<T> {
+	async fn compress(&self, value: &ApiUserTag) -> AggregateTagEventCompressedData {
+		todo!()
+	}
+}
+
+impl<T: Database> Compressor<GetAggregateRequest> for CachedDB<T> {
+	async fn compress(&self, value: &GetAggregateApiRequest) -> GetAggregateRequestCompressedData {
 		todo!()
 	}
 }

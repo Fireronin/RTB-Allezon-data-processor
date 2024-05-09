@@ -1,14 +1,14 @@
 use std::env;
 
 use aerospike::{as_key, as_val, Client, ClientPolicy, Expiration, Key, Record, Value, WritePolicy};
-use aerospike::operations::{lists, Operation};
+use aerospike::operations::{lists, MapOrder, Operation};
+use aerospike::operations::cdt_context::ctx_map_key_create;
 use aerospike::operations::lists::{ListOrderType, ListPolicy, ListReturnType, ListWriteFlags};
 use aerospike::Value::{Int, List};
 
 use crate::api::*;
 use crate::data::*;
-use crate::data::time::TimeRange;
-use crate::database::{Compressor, Database};
+use crate::database::{Compressor, Database, Decompressor};
 
 /*
 namespace aero {
@@ -78,20 +78,30 @@ impl AerospikeDB {
 		operations.push((bin, as_val!(value)));
 	}
 	
-	fn retrieve_value_from_mapping_result(bin: &str, result: &Record) -> i64 {
-		if let List(results_for_bin) = result.bins.get(bin).expect(format!("No bin named {} found", bin).as_str()) {
-			let get_result_value = results_for_bin.get(1).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
-			if let List(get_result_list) = get_result_value {
-				let result_value = get_result_list.get(0).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
-				if let Int(out) = result_value {
-					return *out;
-				}
-				unreachable!("Aerospike got a mindfuck and returned sth else than an int of return value of a get_by_value (expecting an int index)")
-			}
-			unreachable!("Aerospike got a mindfuck and returned sth else than a list of return value of a get_by_value (expecting list of indexes)")
+	fn prepare_operations<'a>(&self, operations_definitions: &'a mut Vec<(&'a str, Value)>) -> Vec<Operation<'a>> {
+		let mut operations: Vec<Operation<'a>> = vec![];
+		for (bin, value) in operations_definitions.iter() {
+			operations.push(lists::append(&self.insert_unique_list_policy, bin, value));
+			operations.push(lists::get_by_value(bin, value, ListReturnType::Index))
 		}
-		unreachable!("Aerospike got a mindfuck and returned sth else than a list of return values for a list of operations")
+		operations
 	}
+}
+
+
+fn retrieve_value_from_mapping_result(bin: &str, result: &Record) -> i64 {
+	if let List(results_for_bin) = result.bins.get(bin).expect(format!("No bin named {} found", bin).as_str()) {
+		let get_result_value = results_for_bin.get(1).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
+		if let List(get_result_list) = get_result_value {
+			let result_value = get_result_list.get(0).expect(format!("Aerospike fucked up and didn't return index of key for bin {}", bin).as_str());
+			if let Int(out) = result_value {
+				return *out;
+			}
+			unreachable!("Aerospike got a mindfuck and returned sth else than an int of return value of a get_by_value (expecting an int index)")
+		}
+		unreachable!("Aerospike got a mindfuck and returned sth else than a list of return value of a get_by_value (expecting list of indexes)")
+	}
+	unreachable!("Aerospike got a mindfuck and returned sth else than a list of return values for a list of operations")
 }
 
 impl Database for AerospikeDB {
@@ -122,11 +132,11 @@ impl Database for AerospikeDB {
 		}
 	}
 	
-	async fn add_user_event(&self, request: AddUserProfileRequest) {
-		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &request.cookie.0);
-		let value = as_val!(serde_json::to_string(&request.tag).unwrap());
+	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction) {
+		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &cookie.0);
+		let value = as_val!(serde_json::to_string(&tag).unwrap());
 		
-		let action = match request.action {
+		let action = match action {
 			UserAction::VIEW => Self::VIEW_BIN,
 			UserAction::BUY => Self::BUY_BIN,
 		};
@@ -178,41 +188,35 @@ impl Database for AerospikeDB {
 		}
 	}
 	
-	async fn add_aggregate_event(&self, tag: &AggregateTagEvent) {
-		// let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
-		// let map_key = as_val!(tag.timestamp / 60000);
-		// let compressed_tag = AggregateTagEvent::new(
-		// 	self.compress(
-		// 		Some(&tag.origin),
-		// 		Some(&tag.product_info.brand_id),
-		// 		Some(&tag.product_info.category_id)), tag);
-		// let value = as_val!(serde_json::to_string(&compressed_tag).unwrap());
-		//
-		// let context = [ctx_map_key_create(map_key, MapOrder::KeyOrdered)];
-		// let add_operation = lists::append(&self.list_policy, Self::TAG_BIN, &value);
-		// let add_operation = add_operation.set_context(&context);
-		//
-		// let _ = self.operate(&key, &vec![add_operation]);
-		todo!()
+	async fn add_aggregate_event(&self, timestamp: i64, tag: AggregateTagEvent) {
+		let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
+		let map_key = as_val!(timestamp / 60000);
+		let value = as_val!(serde_json::to_string(&tag).unwrap());
+		
+		let context = [ctx_map_key_create(map_key, MapOrder::KeyOrdered)];
+		let add_operation = lists::append(&self.list_policy, Self::TAG_BIN, &value);
+		let add_operation = add_operation.set_context(&context);
+		
+		self.operate(&key, &vec![add_operation]);
 	}
 	
-	async fn get_aggregate(&self, time_range: &TimeRange) -> GetAggregateResponse {
+	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse {
 		// let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
 		// let start_key_range = as_val!(time_range.start / 60000);
 		// let end_key_range = as_val!(time_range.end / 60000);
-		//
+		// 
 		// let get_tags = maps::get_by_key_range(
 		// 	&Self::TAG_BIN,
 		// 	&start_key_range,
 		// 	&end_key_range,
 		// 	MapReturnType::Value);
-		//
+		// 
 		// let result = self.operate(&key, &vec![get_tags]);
-		//
+		// 
 		// let tag_list = result.bins.get(Self::TAG_BIN);
-		//
+		// 
 		// println!("Tag list {:?}", tag_list);
-		//
+		// 
 		// tag_list
 		todo!()
 	}
@@ -222,27 +226,54 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 	async fn compress(&self, value: &ApiUserTag) -> UserTagEventCompressedData {
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
 
-		let mut operation_stuff = vec![];
-		self.add_or_get_mapping(&value.product_info.product_id, Self::PRODUCT_ID_BIN, &mut operation_stuff);
-		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operation_stuff);
-		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operation_stuff);
-		self.add_or_get_mapping(&value.country, Self::COUNTRY_BIN, &mut operation_stuff);
-		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operation_stuff);
+		let mut operations_definitions = vec![];
+		self.add_or_get_mapping(&value.product_info.product_id, Self::PRODUCT_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.country, Self::COUNTRY_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
 		
-		let mut operations = vec![];
-		for (bin, value) in operation_stuff.iter() {
-			operations.push(lists::append(&self.insert_unique_list_policy, bin, value));
-			operations.push(lists::get_by_value(bin, value, ListReturnType::Index))
-		}
+		let operations = self.prepare_operations(&mut operations_definitions);
 		
 		let result = self.operate(&key, &operations);
 		
 		UserTagEventCompressedData {
-			product_id: AerospikeDB::retrieve_value_from_mapping_result(Self::PRODUCT_ID_BIN, &result) as u64,
-			brand_id: AerospikeDB::retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
-			category_id: AerospikeDB::retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
-			country: AerospikeDB::retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,
-			origin: AerospikeDB::retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
+			product_id: retrieve_value_from_mapping_result(Self::PRODUCT_ID_BIN, &result) as u64,
+			brand_id: retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
+			category_id: retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
+			country: retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,
+			origin: retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
+		}
+	}
+}
+
+impl Decompressor<UserTagEvent> for AerospikeDB {
+	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
+		// let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
+		// let mut operation_stuff = vec![];
+		
+		todo!()
+	}
+}
+
+
+impl Compressor<AggregateTagEvent> for AerospikeDB {
+	async fn compress(&self, value: &ApiUserTag) -> AggregateTagEventCompressedData {
+		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
+		
+		let mut operations_definitions = vec![];
+		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
+		
+		let operations = self.prepare_operations(&mut operations_definitions);
+		
+		let result = self.operate(&key, &operations);
+		
+		AggregateTagEventCompressedData {
+			brand_id: retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
+			category_id: retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
+			origin_id: retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
 		}
 	}
 }

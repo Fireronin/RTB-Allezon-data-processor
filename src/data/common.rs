@@ -9,7 +9,7 @@ pub struct ProductInfo {
 	pub price: i32,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Cookie(pub String);
 
 impl Into<String> for Cookie {
