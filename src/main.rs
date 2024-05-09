@@ -1,10 +1,12 @@
+#![feature(async_closure)]
+
 use std::sync::Arc;
 
 use actix_web::{App, HttpServer, web};
 
 use endpoints::*;
 
-use crate::database::{AerospikeDB, CachedDB, Database, LocalDB};
+use crate::database::{AerospikeDB, CachedDB, LocalDB};
 
 mod endpoints;
 mod database;
@@ -13,13 +15,14 @@ mod tests;
 pub mod api;
 
 pub struct AppState {
-	// pub database: Arc<CachedDB<AerospikeDB>>,
-	pub database: Arc<LocalDB>,
+	pub database: Arc<CachedDB<LocalDB, AerospikeDB>>,
+	// pub database: Arc<LocalDB>,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-	let database = Arc::new(LocalDB::new());
+	// let database = Arc::new(LocalDB::new());
+	let database = Arc::new(CachedDB::new(LocalDB::new(), AerospikeDB::new()));
 	
 	HttpServer::new(move || {
 		App::new()

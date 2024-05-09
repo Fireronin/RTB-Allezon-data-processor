@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::api::ApiUserTag;
-use crate::data::{Compress, Cookie, Decompress, Device, ProductInfo, time, UserAction};
+use crate::data::{Compress, Cookie, Decompress, Device, Partial, ProductInfo, time, UserAction};
 use crate::database::{Compressor, Decompressor};
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,13 +19,34 @@ pub struct UserTagEvent {
 	pub device: Device,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct UserTagEventCompressedData {
 	pub product_id: u64,
 	pub brand_id: u16,
 	pub category_id: u16,
 	pub country: u8,
 	pub origin: u16,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct PartialUserTagEventCompressedData {
+	pub product_id: Partial<String, u64>,
+	pub brand_id: Partial<String, u16>,
+	pub category_id: Partial<String, u16>,
+	pub country: Partial<String, u8>,
+	pub origin: Partial<String, u16>,
+}
+
+impl From<ApiUserTag> for PartialUserTagEventCompressedData {
+	fn from(value: ApiUserTag) -> Self {
+		Self {
+			product_id: Partial::Same(value.product_info.product_id),
+			brand_id: Partial::Same(value.product_info.brand_id),
+			category_id: Partial::Same(value.product_info.category_id),
+			country: Partial::Same(value.country),
+			origin: Partial::Same(value.origin),
+		}
+	}
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -40,6 +61,7 @@ pub struct UserTagEventDecompressedData {
 impl Compress for UserTagEvent {
 	type From = ApiUserTag;
 	type CompressedData = UserTagEventCompressedData;
+	type PartialCompressedData = PartialUserTagEventCompressedData;
 	
 	async fn compress<T: Compressor<UserTagEvent>>(value: &ApiUserTag, compressor: &T) -> Result<UserTagEvent> {
 		let compressed_data = compressor.compress(value).await;

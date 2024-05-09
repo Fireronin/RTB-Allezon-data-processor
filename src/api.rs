@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::data::{AGGREGATE_BUCKET, AggregateTagEvent, Compress, Cookie, ProductInfo, UserAction, UserProfile};
+use crate::data::{AGGREGATE_BUCKET, AggregateTagEvent, Compress, Cookie, Partial, ProductInfo, UserAction, UserProfile};
 use crate::data::time::TimeRange;
 use crate::database::Compressor;
 use crate::endpoints::GetAggregateApiRequest;
@@ -57,9 +57,26 @@ pub struct GetAggregateRequestCompressedData {
 	pub category_id: Option<u16>,
 }
 
+pub struct PartialGetAggregateRequestCompressedData {
+	pub origin: Partial<Option<String>, Option<u16>>,
+	pub brand_id: Partial<Option<String>, Option<u16>>,
+	pub category_id: Partial<Option<String>, Option<u16>>,
+}
+
+impl From<GetAggregateApiRequest> for PartialGetAggregateRequestCompressedData {
+	fn from(value: GetAggregateApiRequest) -> Self {
+		Self {
+			origin: Partial::Same(value.origin),
+			brand_id: Partial::Same(value.brand_id),
+			category_id: Partial::Same(value.category_id),
+		}
+	}
+}
+
 impl Compress for GetAggregateRequest {
 	type From = GetAggregateApiRequest;
 	type CompressedData = GetAggregateRequestCompressedData;
+	type PartialCompressedData = PartialGetAggregateRequestCompressedData;
 	
 	async fn compress<T: Compressor<Self>>(value: &Self::From, compressor: &T) -> anyhow::Result<Self> {
 		let compressed = compressor.compress(value).await;

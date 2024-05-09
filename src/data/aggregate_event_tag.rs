@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::ApiUserTag;
 
 use crate::data::common::UserAction;
-use crate::data::{Compress, time};
+use crate::data::{Compress, Partial, time};
 use crate::database::Compressor;
 
 pub const AGGREGATE_BUCKET: i64 = 60000;
@@ -13,6 +13,23 @@ pub struct AggregateTagEventCompressedData {
 	pub origin_id: u16,
 	pub brand_id: u16,
 	pub category_id: u16,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct PartialAggregateTagEventCompressedData {
+	pub origin_id: Partial<String, u16>,
+	pub brand_id: Partial<String, u16>,
+	pub category_id: Partial<String, u16>,
+}
+
+impl From<ApiUserTag> for PartialAggregateTagEventCompressedData {
+	fn from(value: ApiUserTag) -> Self {
+		Self {
+			origin_id: Partial::Same(value.origin),
+			brand_id: Partial::Same(value.product_info.brand_id),
+			category_id: Partial::Same(value.product_info.category_id),
+		}
+	}
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -28,6 +45,7 @@ pub struct AggregateTagEvent {
 impl Compress for AggregateTagEvent {
 	type From = ApiUserTag;
 	type CompressedData = AggregateTagEventCompressedData;
+	type PartialCompressedData = PartialAggregateTagEventCompressedData;
 	
 	async fn compress<T: Compressor<Self>>(value: &Self::From, compressor: &T) -> Result<Self> {
 		let compressed_tag = compressor.compress(value).await;

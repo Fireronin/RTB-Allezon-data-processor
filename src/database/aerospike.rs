@@ -1,14 +1,14 @@
 use std::env;
 
-use aerospike::{as_key, as_val, Client, ClientPolicy, Expiration, Key, Record, Value, WritePolicy};
-use aerospike::operations::{lists, MapOrder, Operation};
+use aerospike::{as_key, as_val, Client, ClientPolicy, Expiration, Key, MapReturnType, Record, Value, WritePolicy};
+use aerospike::operations::{lists, MapOrder, maps, Operation};
 use aerospike::operations::cdt_context::ctx_map_key_create;
 use aerospike::operations::lists::{ListOrderType, ListPolicy, ListReturnType, ListWriteFlags};
 use aerospike::Value::{Int, List};
 
 use crate::api::*;
 use crate::data::*;
-use crate::database::{Compressor, Database, Decompressor};
+use crate::database::{Compressor, Database, Decompressor, Synced, SyncedDB};
 
 /*
 namespace aero {
@@ -74,8 +74,10 @@ impl AerospikeDB {
 		}
 	}
 	
-	fn add_or_get_mapping(&self, value: &String, bin: &'static str, operations: &mut Vec<(&str, Value)>) {
-		operations.push((bin, as_val!(value)));
+	fn add_or_get_mapping<V>(&self, value: &Partial<String, V>, bin: &'static str, operations: &mut Vec<(&str, Value)>) {
+		if let Partial::Same(value) = value {
+			operations.push((bin, as_val!(value)));
+		}
 	}
 	
 	fn prepare_operations<'a>(&self, operations_definitions: &'a mut Vec<(&'a str, Value)>) -> Vec<Operation<'a>> {
@@ -104,8 +106,8 @@ fn retrieve_value_from_mapping_result(bin: &str, result: &Record) -> i64 {
 	unreachable!("Aerospike got a mindfuck and returned sth else than a list of return values for a list of operations")
 }
 
-impl Database for AerospikeDB {
-	async fn new() -> Self {
+impl AerospikeDB {
+	pub fn new() -> Self {
 		let client_policy = ClientPolicy::default();
 		let hosts = env::var("AEROSPIKE_HOSTS")
 			.unwrap_or(String::from("127.0.0.1:3000"));
@@ -131,7 +133,9 @@ impl Database for AerospikeDB {
 			list_policy: ListPolicy::new(ListOrderType::Unordered, ListWriteFlags::Default),
 		}
 	}
-	
+}
+
+impl Database for AerospikeDB {
 	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction) {
 		let key = as_key!(Self::NAMESPACE, Self::TAG_SET, &cookie.0);
 		let value = as_val!(serde_json::to_string(&tag).unwrap());
@@ -201,37 +205,36 @@ impl Database for AerospikeDB {
 	}
 	
 	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse {
-		// let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
-		// let start_key_range = as_val!(time_range.start / 60000);
-		// let end_key_range = as_val!(time_range.end / 60000);
-		// 
-		// let get_tags = maps::get_by_key_range(
-		// 	&Self::TAG_BIN,
-		// 	&start_key_range,
-		// 	&end_key_range,
-		// 	MapReturnType::Value);
-		// 
-		// let result = self.operate(&key, &vec![get_tags]);
-		// 
-		// let tag_list = result.bins.get(Self::TAG_BIN);
-		// 
-		// println!("Tag list {:?}", tag_list);
-		// 
-		// tag_list
+		let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
+		let start_key_range = as_val!(request.time_range.start);
+		let end_key_range = as_val!(request.time_range.end);
+		
+		let get_tags = maps::get_by_key_range(
+			&Self::TAG_BIN,
+			&start_key_range,
+			&end_key_range,
+			MapReturnType::Value);
+		
+		let result = self.operate(&key, &vec![get_tags]);
+		
+		let tag_list = result.bins.get(Self::TAG_BIN);
+		
+		println!("Tag list {:?}", tag_list);
+		
 		todo!()
 	}
 }
 
 impl Compressor<UserTagEvent> for AerospikeDB {
-	async fn compress(&self, value: &ApiUserTag) -> UserTagEventCompressedData {
+	async fn compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventCompressedData {
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
-
+		
 		let mut operations_definitions = vec![];
-		self.add_or_get_mapping(&value.product_info.product_id, Self::PRODUCT_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.country, Self::COUNTRY_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.product_id, Self::PRODUCT_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.country, Self::COUNTRY_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
 		
 		let operations = self.prepare_operations(&mut operations_definitions);
 		
@@ -250,21 +253,35 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 impl Decompressor<UserTagEvent> for AerospikeDB {
 	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
 		// let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
-		// let mut operation_stuff = vec![];
-		
+		// let mut operations_definitions = vec![];
+		//
+		// // self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
+		//
+		// let mut operations = vec![];
+		// for (bin, value) in operations_definitions.iter() {
+		// 	operations.push(lists::append(&self.insert_unique_list_policy, bin, value));
+		// }
+		//
+		// UserTagEventDecompressedData {
+		// 	product_id: "".to_string(),
+		// 	brand_id: "".to_string(),
+		// 	category_id: "".to_string(),
+		// 	country: "".to_string(),
+		// 	origin: "".to_string(),
+		// }
 		todo!()
 	}
 }
 
 
 impl Compressor<AggregateTagEvent> for AerospikeDB {
-	async fn compress(&self, value: &ApiUserTag) -> AggregateTagEventCompressedData {
+	async fn compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> AggregateTagEventCompressedData {
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
 		
 		let mut operations_definitions = vec![];
-		self.add_or_get_mapping(&value.product_info.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.product_info.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&value.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.origin_id, Self::ORIGIN_ID_BIN, &mut operations_definitions);
 		
 		let operations = self.prepare_operations(&mut operations_definitions);
 		
@@ -277,3 +294,6 @@ impl Compressor<AggregateTagEvent> for AerospikeDB {
 		}
 	}
 }
+
+impl Synced for AerospikeDB {}
+impl SyncedDB for AerospikeDB {}
