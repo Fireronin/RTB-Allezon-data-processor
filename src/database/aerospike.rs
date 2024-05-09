@@ -190,7 +190,7 @@ impl Database for AerospikeDB {
 	
 	async fn add_aggregate_event(&self, timestamp: i64, tag: AggregateTagEvent) {
 		let key = as_key!(Self::NAMESPACE, Self::MINUTE_SET, Self::EMPTY_KEY);
-		let map_key = as_val!(timestamp / 60000);
+		let map_key = as_val!(timestamp);
 		let value = as_val!(serde_json::to_string(&tag).unwrap());
 		
 		let context = [ctx_map_key_create(map_key, MapOrder::KeyOrdered)];

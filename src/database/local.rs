@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use dashmap::DashMap;
+use rayon::prelude::*;
 use tokio::sync::RwLock;
 use crate::api::*;
 use crate::data::*;
@@ -47,8 +48,8 @@ pub struct LocalDB {
 	category_id_map: Mapper,
 }
 
-impl Database for LocalDB {
-	async fn new() -> Self {
+impl LocalDB {
+	pub fn new() -> Self {
 		Self {
 			user_profiles: Default::default(),
 			aggregates: Default::default(),
@@ -59,7 +60,9 @@ impl Database for LocalDB {
 			category_id_map: Default::default(),
 		}
 	}
-	
+}
+
+impl Database for LocalDB {
 	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction) {
 		let mut user_profile = self.user_profiles.entry(cookie.clone()).or_insert(UserProfile::default());
 		let tags = match action {
@@ -91,7 +94,34 @@ impl Database for LocalDB {
 	}
 	
 	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse {
-		todo!()
+		let reader = self.aggregates.read().await;
+		let start = reader.start_timestamp.unwrap();
+		let start_bucket = (request.time_range.start - start) as usize;
+		let end_bucket = (request.time_range.end - start) as usize;
+		
+		fn eq_or_true(option: &Option<u16>, value: u16) -> bool {
+			option.map(|x| x == value).unwrap_or(true)
+		}
+		
+		let buckets = reader.events.as_slice()[start_bucket..end_bucket]
+			.into_par_iter()
+			.map(|minute_data|{ 
+				minute_data.iter().fold(AggregateBucket::default(), |mut result, tag| {
+					let correct_origin = eq_or_true(&request.origin, tag.origin_id);
+					let correct_brand_id = eq_or_true(&request.brand_id, tag.brand_id);
+					let correct_category_id = eq_or_true(&request.category_id, tag.category_id);
+					let correct_action = tag.action == request.action;
+					if correct_origin && correct_brand_id && correct_category_id && correct_action {
+						result.count += 1;
+						result.sum += tag.price as u64;
+					}
+					result
+				})
+			}).collect();
+		
+		GetAggregateResponse {
+			aggregates: buckets,
+		}
 	}
 }
 

@@ -6,6 +6,8 @@ use crate::data::common::UserAction;
 use crate::data::{Compress, time};
 use crate::database::Compressor;
 
+pub const AGGREGATE_BUCKET: i64 = 60000;
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct AggregateTagEventCompressedData {
 	pub origin_id: u16,

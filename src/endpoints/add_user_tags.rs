@@ -3,7 +3,7 @@ use actix_web::http::StatusCode;
 use crate::api::ApiUserTag;
 
 use crate::AppState;
-use crate::data::{AggregateTagEvent, Compress, Cookie, UserAction, UserTagEvent};
+use crate::data::{AGGREGATE_BUCKET, AggregateTagEvent, Compress, Cookie, UserAction, UserTagEvent};
 use crate::database::Database;
 use crate::endpoints::utils::IntoHttpError;
 
@@ -18,7 +18,7 @@ pub async fn add_user_tags(data: web::Data<AppState>, req_body: String) -> Resul
 	let action = UserAction::try_from(user_tag.action.as_ref()).map_error(StatusCode::BAD_REQUEST)?;
 	
 	data.database.add_user_event(&cookie, tag, action).await;
-	data.database.add_aggregate_event(tag.time, aggregate_tag).await;
+	data.database.add_aggregate_event(tag.time / AGGREGATE_BUCKET, aggregate_tag).await;
 	
 	Ok(HttpResponse::Ok().status(StatusCode::NO_CONTENT).finish())
 }

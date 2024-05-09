@@ -2,7 +2,6 @@ use crate::data::{AggregateTagEvent, Compress, Cookie, Decompress, UserAction, U
 use crate::api::*;
 
 pub trait Database {
-	async fn new() -> Self;
 	async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction);
 	/// Get last MAX_TAGS buy tags and view tags for a given cookie
 	async fn get_user_profile(&self, cookie: &Cookie) -> UserProfile;

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::data::{AggregateTagEvent, Compress, Cookie, ProductInfo, UserAction, UserProfile};
+use crate::data::{AGGREGATE_BUCKET, AggregateTagEvent, Compress, Cookie, ProductInfo, UserAction, UserProfile};
 use crate::data::time::TimeRange;
 use crate::database::Compressor;
 use crate::endpoints::GetAggregateApiRequest;
@@ -41,6 +41,7 @@ pub struct GetAggregateRequest {
 	pub category_id: Option<u16>,
 }
 
+#[derive(Default)]
 pub struct AggregateBucket {
 	pub sum: u64,
 	pub count: u64,
@@ -63,7 +64,9 @@ impl Compress for GetAggregateRequest {
 	async fn compress<T: Compressor<Self>>(value: &Self::From, compressor: &T) -> anyhow::Result<Self> {
 		let compressed = compressor.compress(value).await;
 		Ok(Self {
-			time_range: TimeRange::new(value.time_range.as_str()).unwrap(),
+			time_range: TimeRange::new(value.time_range.as_str())
+				.map(|t| TimeRange { start: t.start / AGGREGATE_BUCKET, end: t.end / AGGREGATE_BUCKET })
+				.unwrap(),
 			action: UserAction::try_from(value.action.as_str()).unwrap(),
 			origin: compressed.origin,
 			brand_id: compressed.brand_id,

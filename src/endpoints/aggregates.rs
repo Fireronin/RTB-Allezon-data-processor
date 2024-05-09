@@ -33,9 +33,6 @@ enum AggregateRequestType {
 	Sum,
 }
 
-/*
-Uses minute_data_ptr
- */
 #[post("/aggregates")]
 pub async fn aggregates(
 	data: web::Data<AppState>,
@@ -110,31 +107,3 @@ pub async fn aggregates(
 	
 	Ok(HttpResponse::Ok().json(response))
 }
-// 
-// #[derive(Default)]
-// struct SpoolingResult {
-// 	count: u64,
-// 	sum: u64,
-// }
-// 
-// fn eq_or_true(option: &Option<u16>, value: u16) -> bool {
-// 	option.map(|x| x == value).unwrap_or(true)
-// }
-// 
-// fn spool(data: Vec<Vec<AggregateTagEvent>>,
-//          action: UserAction,
-//          compression: AggregateCompressedRequest) -> Vec<SpoolingResult> {
-// 	data.into_par_iter().map(|minute_data|{
-// 		minute_data.iter().fold(SpoolingResult::default(), |mut result, tag| {
-// 			let correct_origin = eq_or_true(&compression.origin_id, tag.origin_id);
-// 			let correct_brand_id = eq_or_true(&compression.brand_id, tag.brand_id);
-// 			let correct_category_id = eq_or_true(&compression.category_id, tag.category_id);
-// 			let correct_action = tag.action == action;
-// 			if correct_origin && correct_brand_id && correct_category_id && correct_action {
-// 				result.count += 1;
-// 				result.sum += tag.price as u64;
-// 			}
-// 			result
-// 		})
-// 	}).collect()
-// }

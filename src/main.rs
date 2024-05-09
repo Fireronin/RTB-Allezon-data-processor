@@ -4,7 +4,7 @@ use actix_web::{App, HttpServer, web};
 
 use endpoints::*;
 
-use crate::database::{AerospikeDB, CachedDB, Database};
+use crate::database::{AerospikeDB, CachedDB, Database, LocalDB};
 
 mod endpoints;
 mod database;
@@ -13,12 +13,13 @@ mod tests;
 pub mod api;
 
 pub struct AppState {
-	pub database: Arc<CachedDB<AerospikeDB>>,
+	// pub database: Arc<CachedDB<AerospikeDB>>,
+	pub database: Arc<LocalDB>,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-	let database = Arc::new(CachedDB::new().await);
+	let database = Arc::new(LocalDB::new());
 	
 	HttpServer::new(move || {
 		App::new()
