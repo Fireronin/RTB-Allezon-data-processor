@@ -12,12 +12,6 @@ pub struct ProductInfo {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Cookie(pub String);
 
-impl Into<String> for Cookie {
-	fn into(self) -> String {
-		self.0
-	}
-}
-
 #[repr(u8)]
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, EnumString, IntoStaticStr)]
 pub enum Device {
@@ -31,4 +25,10 @@ pub enum Device {
 pub enum UserAction {
 	VIEW,
 	BUY,
+}
+
+impl Into<String> for Cookie {
+	fn into(self) -> String {
+		self.0
+	}
 }

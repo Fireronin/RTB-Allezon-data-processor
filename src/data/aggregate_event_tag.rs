@@ -9,6 +9,16 @@ use crate::database::Compressor;
 pub const AGGREGATE_BUCKET: i64 = 60000;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct AggregateTagEvent {
+	pub origin_id: u16,
+	pub brand_id: u16,
+	pub category_id: u16,
+	pub timestamp: i64,
+	pub price: i32,
+	pub action: UserAction,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct AggregateTagEventCompressedData {
 	pub origin_id: u16,
 	pub brand_id: u16,
@@ -30,16 +40,6 @@ impl From<ApiUserTag> for PartialAggregateTagEventCompressedData {
 			category_id: Partial::Same(value.product_info.category_id),
 		}
 	}
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct AggregateTagEvent {
-	pub origin_id: u16,
-	pub brand_id: u16,
-	pub category_id: u16,
-	pub timestamp: i64,
-	pub price: i32,
-	pub action: UserAction,
 }
 
 impl Compress for AggregateTagEvent {

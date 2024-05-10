@@ -1,5 +1,3 @@
-#![feature(async_closure)]
-
 use std::sync::Arc;
 
 use actix_web::{App, HttpServer, web};
@@ -13,6 +11,7 @@ mod database;
 mod data;
 mod tests;
 pub mod api;
+mod compression;
 
 pub struct AppState {
 	pub database: Arc<CachedDB<LocalDB, AerospikeDB>>,

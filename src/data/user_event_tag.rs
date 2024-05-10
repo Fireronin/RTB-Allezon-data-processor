@@ -37,6 +37,15 @@ pub struct PartialUserTagEventCompressedData {
 	pub origin: Partial<String, u16>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct UserTagEventDecompressedData {
+	pub product_id: String,
+	pub brand_id: String,
+	pub category_id: String,
+	pub country: String,
+	pub origin: String,
+}
+
 impl From<ApiUserTag> for PartialUserTagEventCompressedData {
 	fn from(value: ApiUserTag) -> Self {
 		Self {
@@ -47,15 +56,6 @@ impl From<ApiUserTag> for PartialUserTagEventCompressedData {
 			origin: Partial::Same(value.origin),
 		}
 	}
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct UserTagEventDecompressedData {
-	pub product_id: String,
-	pub brand_id: String,
-	pub category_id: String,
-	pub country: String,
-	pub origin: String,
 }
 
 impl Compress for UserTagEvent {

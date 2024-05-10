@@ -1,4 +1,4 @@
-use chrono::{ SecondsFormat};
+use chrono::SecondsFormat;
 use anyhow::Result;
 
 pub struct TimeRange {
