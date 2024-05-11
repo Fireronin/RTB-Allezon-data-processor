@@ -295,5 +295,11 @@ impl Compressor<AggregateTagEvent> for AerospikeDB {
 	}
 }
 
+impl Compressor<GetAggregateRequest> for AerospikeDB {
+	async fn compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> GetAggregateRequestCompressedData {
+		todo!()
+	}
+}
+
 impl Synced for AerospikeDB {}
 impl SyncedDB for AerospikeDB {}

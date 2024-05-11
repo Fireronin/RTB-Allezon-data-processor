@@ -57,6 +57,7 @@ pub struct GetAggregateRequestCompressedData {
 	pub category_id: Option<u16>,
 }
 
+#[derive(Clone)]
 pub struct PartialGetAggregateRequestCompressedData {
 	pub origin: Partial<Option<String>, Option<u16>>,
 	pub brand_id: Partial<Option<String>, Option<u16>>,

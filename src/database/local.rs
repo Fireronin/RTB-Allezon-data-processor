@@ -156,14 +156,33 @@ impl Compressor<UserTagEvent> for LocalDB {
 }
 
 impl PartialCompressor<UserTagEvent> for LocalDB {
-	async fn partial_compress(&self, value: &ApiUserTag) -> PartialUserTagEventCompressedData {
+	async fn partial_compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> PartialUserTagEventCompressedData {
 		PartialUserTagEventCompressedData {
-			product_id: self.product_id_map.try_get(&value.product_info.brand_id).await.map_changed(|x| x as u64),
-			brand_id: self.brand_id_map.try_get(&value.product_info.brand_id).await.map_changed(|x| x as u16),
-			category_id: self.category_id_map.try_get(&value.product_info.category_id).await.map_changed(|x| x as u16),
-			country: self.country_id_map.try_get(&value.country).await.map_changed(|x| x as u8),
-			origin: self.origin_id_map.try_get(&value.origin).await.map_changed(|x| x as u16),
+			product_id: match partial.product_id {
+				Partial::Same(x) => self.product_id_map.try_get(&x).await.map_changed(|x| x as u64),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			brand_id: match partial.brand_id {
+				Partial::Same(x) => self.brand_id_map.try_get(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			category_id: match partial.category_id {
+				Partial::Same(x) => self.category_id_map.try_get(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			country: match partial.country {
+				Partial::Same(x) => self.country_id_map.try_get(&x).await.map_changed(|x| x as u8),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			origin: match partial.origin {
+				Partial::Same(x) => self.origin_id_map.try_get(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
 		}
+	}
+	
+	async fn update_compression(&self, partial: &PartialUserTagEventCompressedData, compressed: &UserTagEventCompressedData) {
+		todo!()
 	}
 }
 
@@ -198,6 +217,16 @@ impl Compressor<AggregateTagEvent> for LocalDB {
 	}
 }
 
+impl PartialCompressor<AggregateTagEvent> for LocalDB {
+	async fn partial_compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> PartialAggregateTagEventCompressedData {
+		todo!()
+	}
+	
+	async fn update_compression(&self, partial: &PartialAggregateTagEventCompressedData, compressed: &AggregateTagEventCompressedData) {
+		todo!()
+	}
+}
+
 impl Compressor<GetAggregateRequest> for LocalDB {
 	async fn compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> GetAggregateRequestCompressedData {
 		let origin = match partial.origin {
@@ -227,6 +256,16 @@ impl Compressor<GetAggregateRequest> for LocalDB {
 			brand_id,
 			category_id,
 		}
+	}
+}
+
+impl PartialCompressor<GetAggregateRequest> for LocalDB {
+	async fn partial_compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> PartialGetAggregateRequestCompressedData {
+		todo!()
+	}
+	
+	async fn update_compression(&self, partial: &PartialGetAggregateRequestCompressedData, compressed: &GetAggregateRequestCompressedData) {
+		todo!()
 	}
 }
 

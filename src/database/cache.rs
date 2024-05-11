@@ -5,7 +5,7 @@ use crate::data::*;
 use crate::database::{Compressor, Database, Decompressor, PartialCompressor};
 
 pub trait Synced: Send + Sync + 'static {}
-pub trait CompressingDB: Synced + PartialCompressor<UserTagEvent> {}
+pub trait CompressingDB: Synced {}
 pub trait SyncedDB: Synced + Database {}
 
 pub struct CachedDB<L: CompressingDB, T: SyncedDB> {
@@ -47,9 +47,12 @@ impl<L: CompressingDB, T: SyncedDB> Database for CachedDB<L, T> {
 	}
 }
 
-impl<L: CompressingDB, T: SyncedDB> Compressor<UserTagEvent> for CachedDB<L, T> {
+impl<L: CompressingDB + PartialCompressor<UserTagEvent>, T: SyncedDB + Compressor<UserTagEvent>> Compressor<UserTagEvent> for CachedDB<L, T> {
 	async fn compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventCompressedData {
-		todo!()
+		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
+		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
+		self.local_db.update_compression(&compressed_locally, &compressed).await;
+		compressed
 	}
 }
 
@@ -59,14 +62,20 @@ impl<L: CompressingDB, T: SyncedDB> Decompressor<UserTagEvent> for CachedDB<L, T
 	}
 }
 
-impl<L: CompressingDB, T: SyncedDB> Compressor<AggregateTagEvent> for CachedDB<L, T> {
+impl<L: CompressingDB + PartialCompressor<AggregateTagEvent>, T: SyncedDB + Compressor<AggregateTagEvent>> Compressor<AggregateTagEvent> for CachedDB<L, T> {
 	async fn compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> AggregateTagEventCompressedData {
-		todo!()
+		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
+		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
+		self.local_db.update_compression(&compressed_locally, &compressed).await;
+		compressed
 	}
 }
 
-impl<L: CompressingDB, T: SyncedDB> Compressor<GetAggregateRequest> for CachedDB<L, T> {
+impl<L: CompressingDB + PartialCompressor<GetAggregateRequest>, T: SyncedDB + Compressor<GetAggregateRequest>> Compressor<GetAggregateRequest> for CachedDB<L, T> {
 	async fn compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> GetAggregateRequestCompressedData {
-		todo!()
+		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
+		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
+		self.local_db.update_compression(&compressed_locally, &compressed).await;
+		compressed
 	}
 }
