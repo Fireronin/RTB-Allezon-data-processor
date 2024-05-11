@@ -233,8 +233,8 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 		self.add_or_get_mapping(&partial.product_id, Self::PRODUCT_ID_BIN, &mut operations_definitions);
 		self.add_or_get_mapping(&partial.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
 		self.add_or_get_mapping(&partial.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&partial.country, Self::COUNTRY_BIN, &mut operations_definitions);
-		self.add_or_get_mapping(&partial.origin, Self::ORIGIN_ID_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.country_id, Self::COUNTRY_BIN, &mut operations_definitions);
+		self.add_or_get_mapping(&partial.origin_id, Self::ORIGIN_ID_BIN, &mut operations_definitions);
 		
 		let operations = self.prepare_operations(&mut operations_definitions);
 		
@@ -244,14 +244,14 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 			product_id: retrieve_value_from_mapping_result(Self::PRODUCT_ID_BIN, &result) as u64,
 			brand_id: retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
 			category_id: retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
-			country: retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,
-			origin: retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
+			country_id: retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,
+			origin_id: retrieve_value_from_mapping_result(Self::ORIGIN_ID_BIN, &result) as u16,
 		}
 	}
 }
 
 impl Decompressor<UserTagEvent> for AerospikeDB {
-	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
+	async fn decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventDecompressedData {
 		// let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
 		// let mut operations_definitions = vec![];
 		//

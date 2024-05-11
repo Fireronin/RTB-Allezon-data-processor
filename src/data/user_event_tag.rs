@@ -12,8 +12,8 @@ pub struct UserTagEvent {
 	pub product_id: u64,
 	pub brand_id: u16,
 	pub category_id: u16,
-	pub country: u8,
-	pub origin: u16,
+	pub country_id: u8,
+	pub origin_id: u16,
 	pub time: i64,
 	pub price: i32,
 	pub device: Device,
@@ -24,8 +24,8 @@ pub struct UserTagEventCompressedData {
 	pub product_id: u64,
 	pub brand_id: u16,
 	pub category_id: u16,
-	pub country: u8,
-	pub origin: u16,
+	pub country_id: u8,
+	pub origin_id: u16,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -33,8 +33,8 @@ pub struct PartialUserTagEventCompressedData {
 	pub product_id: Partial<String, u64>,
 	pub brand_id: Partial<String, u16>,
 	pub category_id: Partial<String, u16>,
-	pub country: Partial<String, u8>,
-	pub origin: Partial<String, u16>,
+	pub country_id: Partial<String, u8>,
+	pub origin_id: Partial<String, u16>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -42,8 +42,8 @@ pub struct UserTagEventDecompressedData {
 	pub product_id: String,
 	pub brand_id: String,
 	pub category_id: String,
-	pub country: String,
-	pub origin: String,
+	pub country_id: String,
+	pub origin_id: String,
 }
 
 impl From<ApiUserTag> for PartialUserTagEventCompressedData {
@@ -52,8 +52,20 @@ impl From<ApiUserTag> for PartialUserTagEventCompressedData {
 			product_id: Partial::Same(value.product_info.product_id),
 			brand_id: Partial::Same(value.product_info.brand_id),
 			category_id: Partial::Same(value.product_info.category_id),
-			country: Partial::Same(value.country),
-			origin: Partial::Same(value.origin),
+			country_id: Partial::Same(value.country),
+			origin_id: Partial::Same(value.origin),
+		}
+	}
+}
+
+impl From<UserTagEvent> for PartialUserTagEventCompressedData {
+	fn from(value: UserTagEvent) -> Self {
+		Self {
+			product_id: Partial::Changed(value.product_id),
+			brand_id: Partial::Changed(value.brand_id),
+			category_id: Partial::Changed(value.category_id),
+			country_id: Partial::Changed(value.country_id),
+			origin_id: Partial::Changed(value.origin_id),
 		}
 	}
 }
@@ -69,8 +81,8 @@ impl Compress for UserTagEvent {
 			product_id: compressed_data.product_id,
 			brand_id: compressed_data.brand_id,
 			category_id: compressed_data.category_id,
-			country: compressed_data.country,
-			origin: compressed_data.origin,
+			country_id: compressed_data.country_id,
+			origin_id: compressed_data.origin_id,
 			time: time::parse_timestamp(value.time.as_str())?,
 			price: value.product_info.price,
 			device: Device::try_from(value.device.as_str())?,
@@ -81,6 +93,7 @@ impl Compress for UserTagEvent {
 impl Decompress for UserTagEvent {
 	type Type = ApiUserTag;
 	type DecompressedData = UserTagEventDecompressedData;
+	type PartialDecompressedData = PartialUserTagEventCompressedData;
 	type AdditionalData = (Cookie, UserAction);
 	
 	async fn decompress<T: Decompressor<Self>>(&self, decompressor: &T, additional_data: Self::AdditionalData) -> Self::Type {
@@ -94,10 +107,10 @@ impl Decompress for UserTagEvent {
 			},
 			time: time::timestamp_to_str(self.time),
 			cookie: additional_data.0.0,
-			country: decompressed_data.country,
+			country: decompressed_data.country_id,
 			device: Into::<&'static str>::into(self.device).to_owned(),
 			action: Into::<&'static str>::into(additional_data.1).to_owned(),
-			origin: decompressed_data.origin,
+			origin: decompressed_data.origin_id,
 		}
 	}
 }

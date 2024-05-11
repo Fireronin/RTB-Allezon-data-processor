@@ -19,13 +19,19 @@ pub trait Compressor<T: Compress> where T::From: Clone {
 }
 
 pub trait PartialCompressor<T: Compress> {
-	async fn partial_compress(&self, value: &T::From) -> T::PartialCompressedData {
-		self.partial_compress_with_partial(T::PartialCompressedData::from(value.clone())).await
-	}
 	async fn partial_compress_with_partial(&self, partial: T::PartialCompressedData) -> T::PartialCompressedData;
 	async fn update_compression(&self, partial: &T::PartialCompressedData, compressed: &T::CompressedData);
 }
 
-pub trait Decompressor<T: Decompress> {
-	async fn decompress(&self, value: &T) -> T::DecompressedData;
+pub trait Decompressor<T: Decompress> where T: Clone {
+	async fn decompress(&self, value: &T) -> T::DecompressedData {
+		self.decompress_with_partial(T::PartialDecompressedData::from(value.clone())).await
+	}
+	
+	async fn decompress_with_partial(&self, partial: T::PartialDecompressedData) -> T::DecompressedData;
+}
+
+pub trait PartialDecompressor<T: Decompress> {
+	async fn partial_decompress_with_partial(&self, partial: T::PartialDecompressedData) -> T::PartialDecompressedData;
+	async fn update_compression(&self, partial: &T::PartialDecompressedData, compressed: &T);
 }

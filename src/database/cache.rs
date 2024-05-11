@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::api::*;
 use crate::data::*;
-use crate::database::{Compressor, Database, Decompressor, PartialCompressor};
+use crate::database::{Compressor, Database, Decompressor, PartialCompressor, PartialDecompressor};
 
 pub trait Synced: Send + Sync + 'static {}
 pub trait CompressingDB: Synced {}
@@ -56,9 +56,22 @@ impl<L: CompressingDB + PartialCompressor<UserTagEvent>, T: SyncedDB + Compresso
 	}
 }
 
-impl<L: CompressingDB, T: SyncedDB> Decompressor<UserTagEvent> for CachedDB<L, T> {
+impl<L: CompressingDB + PartialDecompressor<UserTagEvent>, T: SyncedDB + Decompressor<UserTagEvent>> Decompressor<UserTagEvent> for CachedDB<L, T> {
 	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
-		todo!()
+		let partial = PartialUserTagEventCompressedData::from(value.clone());
+		let decompressed_locally = self.local_db.partial_decompress_with_partial(partial).await;
+		let decompressed = self.remote_db.decompress_with_partial(decompressed_locally.clone()).await;
+		self.local_db.update_compression(&decompressed_locally, &value).await;
+		decompressed
+	}
+	
+	// Does not update local compression database
+	async fn decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventDecompressedData {
+		// let partial = PartialUserTagEventCompressedData::from(value.clone());
+		let decompressed_locally = self.local_db.partial_decompress_with_partial(partial).await;
+		let decompressed = self.remote_db.decompress_with_partial(decompressed_locally.clone()).await;
+		// self.local_db.update_compression(&decompressed_locally, &value).await;
+		decompressed
 	}
 }
 

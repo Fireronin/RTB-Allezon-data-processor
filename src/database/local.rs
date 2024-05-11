@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use tokio::sync::RwLock;
 use crate::api::*;
 use crate::data::*;
-use crate::database::{CompressingDB, Compressor, Database, Decompressor, PartialCompressor, Synced};
+use crate::database::{CompressingDB, Compressor, Database, Decompressor, PartialCompressor, PartialDecompressor, Synced};
 
 #[derive(Default)]
 pub struct Mapper {
@@ -12,7 +12,7 @@ pub struct Mapper {
 }
 
 impl Mapper {
-	pub async fn get_or_insert(&self, key: &String) -> usize {
+	pub async fn get_or_insert_id(&self, key: &String) -> usize {
 		let mut write_lock = self.mapper.write().await;
 		let length = write_lock.1.len();
 		let id = *write_lock.0.entry(key.clone()).or_insert(length);
@@ -22,15 +22,31 @@ impl Mapper {
 		id
 	}
 	
-	pub async fn try_get(&self, key: &String) -> Partial<String, usize> {
+	pub async fn force_insert_mapping(&self, key: &String, id: usize) {
+		let mut write_lock = self.mapper.write().await;
+		write_lock.0.insert(key.clone(), id);
+		if write_lock.1.len() < id {
+			write_lock.1.resize(id, String::from(""));
+		}
+		*write_lock.1.get_mut(id).unwrap() = key.clone();
+	}
+	
+	pub async fn try_get_id(&self, key: &String) -> Partial<String, usize> {
 		match self.mapper.read().await.0.get(key).map(Clone::clone) {
 			Some(v) => Partial::Changed(v),
 			None => Partial::Same(key.clone()),
 		}
 	}
 	
-	pub async fn get(&self, id: usize) -> Option<String> {
+	pub async fn get_string(&self, id: usize) -> Option<String> {
 		self.mapper.read().await.1.get(id).map(Clone::clone)
+	}
+	
+	pub async fn try_get_string(&self, id: usize) -> Partial<String, usize> {
+		match self.mapper.read().await.1.get(id).map(Clone::clone) {
+			Some(x) => Partial::Same(x),
+			None => Partial::Changed(id),
+		}
 	}
 }
 
@@ -132,23 +148,23 @@ impl Compressor<UserTagEvent> for LocalDB {
 	async fn compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventCompressedData {
 		UserTagEventCompressedData {
 			product_id: match partial.product_id {
-				Partial::Same(x) => self.product_id_map.get_or_insert(&x).await as u64,
+				Partial::Same(x) => self.product_id_map.get_or_insert_id(&x).await as u64,
 				Partial::Changed(x) => x,
 			},
 			brand_id: match partial.brand_id {
-				Partial::Same(x) => self.brand_id_map.get_or_insert(&x).await as u16,
+				Partial::Same(x) => self.brand_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
 			category_id: match partial.category_id {
-				Partial::Same(x) => self.category_id_map.get_or_insert(&x).await as u16,
+				Partial::Same(x) => self.category_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
-			country: match partial.country {
-				Partial::Same(x) => self.country_id_map.get_or_insert(&x).await as u8,
+			country_id: match partial.country_id {
+				Partial::Same(x) => self.country_id_map.get_or_insert_id(&x).await as u8,
 				Partial::Changed(x) => x,
 			},
-			origin: match partial.origin {
-				Partial::Same(x) => self.origin_id_map.get_or_insert(&x).await as u16,
+			origin_id: match partial.origin_id {
+				Partial::Same(x) => self.origin_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
 		}
@@ -159,41 +175,115 @@ impl PartialCompressor<UserTagEvent> for LocalDB {
 	async fn partial_compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> PartialUserTagEventCompressedData {
 		PartialUserTagEventCompressedData {
 			product_id: match partial.product_id {
-				Partial::Same(x) => self.product_id_map.try_get(&x).await.map_changed(|x| x as u64),
+				Partial::Same(x) => self.product_id_map.try_get_id(&x).await.map_changed(|x| x as u64),
 				Partial::Changed(x) => Partial::Changed(x),
 			},
 			brand_id: match partial.brand_id {
-				Partial::Same(x) => self.brand_id_map.try_get(&x).await.map_changed(|x| x as u16),
+				Partial::Same(x) => self.brand_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
 				Partial::Changed(x) => Partial::Changed(x),
 			},
 			category_id: match partial.category_id {
-				Partial::Same(x) => self.category_id_map.try_get(&x).await.map_changed(|x| x as u16),
+				Partial::Same(x) => self.category_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
 				Partial::Changed(x) => Partial::Changed(x),
 			},
-			country: match partial.country {
-				Partial::Same(x) => self.country_id_map.try_get(&x).await.map_changed(|x| x as u8),
+			country_id: match partial.country_id {
+				Partial::Same(x) => self.country_id_map.try_get_id(&x).await.map_changed(|x| x as u8),
 				Partial::Changed(x) => Partial::Changed(x),
 			},
-			origin: match partial.origin {
-				Partial::Same(x) => self.origin_id_map.try_get(&x).await.map_changed(|x| x as u16),
+			origin_id: match partial.origin_id {
+				Partial::Same(x) => self.origin_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
 				Partial::Changed(x) => Partial::Changed(x),
 			},
 		}
 	}
 	
 	async fn update_compression(&self, partial: &PartialUserTagEventCompressedData, compressed: &UserTagEventCompressedData) {
-		todo!()
+		if let Partial::Same(x) = &partial.brand_id {
+			self.brand_id_map.force_insert_mapping(x, compressed.brand_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.origin_id {
+			self.origin_id_map.force_insert_mapping(x, compressed.origin_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.category_id {
+			self.category_id_map.force_insert_mapping(x, compressed.category_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.country_id {
+			self.country_id_map.force_insert_mapping(x, compressed.country_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.product_id {
+			self.product_id_map.force_insert_mapping(x, compressed.product_id as usize).await;
+		}
 	}
 }
 
 impl Decompressor<UserTagEvent> for LocalDB {
-	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
+	async fn decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventDecompressedData {
 		UserTagEventDecompressedData {
-			product_id: self.product_id_map.get(value.product_id as usize).await.unwrap(),
-			brand_id: self.brand_id_map.get(value.brand_id as usize).await.unwrap(),
-			category_id: self.category_id_map.get(value.category_id as usize).await.unwrap(),
-			country: self.country_id_map.get(value.country as usize).await.unwrap(),
-			origin: self.origin_id_map.get(value.origin as usize).await.unwrap(),
+			product_id: match partial.product_id {
+				Partial::Same(x) => x,
+				Partial::Changed(x) => self.product_id_map.get_string(x as usize).await.unwrap(),
+			},
+			brand_id: match partial.brand_id {
+				Partial::Same(x) => x,
+				Partial::Changed(x) => self.brand_id_map.get_string(x as usize).await.unwrap(),
+			},
+			category_id: match partial.category_id {
+				Partial::Same(x) => x,
+				Partial::Changed(x) => self.category_id_map.get_string(x as usize).await.unwrap(),
+			},
+			country_id:  match partial.country_id {
+				Partial::Same(x) => x,
+				Partial::Changed(x) => self.country_id_map.get_string(x as usize).await.unwrap(),
+			},
+			origin_id:  match partial.origin_id {
+				Partial::Same(x) => x,
+				Partial::Changed(x) => self.origin_id_map.get_string(x as usize).await.unwrap(),
+			},
+		}
+	}
+}
+
+impl PartialDecompressor<UserTagEvent> for LocalDB {
+	async fn partial_decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> PartialUserTagEventCompressedData {
+		PartialUserTagEventCompressedData {
+			product_id: match partial.product_id {
+				Partial::Same(x) => Partial::Same(x),
+				Partial::Changed(x) => self.product_id_map.try_get_string(x as usize).await.map_changed(|x| x as u64),
+			},
+			brand_id: match partial.brand_id {
+				Partial::Same(x) => Partial::Same(x),
+				Partial::Changed(x) => self.brand_id_map.try_get_string(x as usize).await.map_changed(|x| x as u16),
+			},
+			category_id: match partial.category_id {
+				Partial::Same(x) => Partial::Same(x),
+				Partial::Changed(x) => self.category_id_map.try_get_string(x as usize).await.map_changed(|x| x as u16),
+			},
+			country_id: match partial.country_id {
+				Partial::Same(x) => Partial::Same(x),
+				Partial::Changed(x) => self.country_id_map.try_get_string(x as usize).await.map_changed(|x| x as u8),
+			},
+			origin_id: match partial.origin_id {
+				Partial::Same(x) => Partial::Same(x),
+				Partial::Changed(x) => self.origin_id_map.try_get_string(x as usize).await.map_changed(|x| x as u16),
+			},
+		}
+	}
+	
+	async fn update_compression(&self, partial: &PartialUserTagEventCompressedData, compressed: &UserTagEvent) {
+		if let Partial::Same(x) = &partial.brand_id {
+			self.brand_id_map.force_insert_mapping(x, compressed.brand_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.origin_id {
+			self.origin_id_map.force_insert_mapping(x, compressed.origin_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.category_id {
+			self.category_id_map.force_insert_mapping(x, compressed.category_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.country_id {
+			self.country_id_map.force_insert_mapping(x, compressed.country_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.product_id {
+			self.product_id_map.force_insert_mapping(x, compressed.product_id as usize).await;
 		}
 	}
 }
@@ -202,15 +292,15 @@ impl Compressor<AggregateTagEvent> for LocalDB {
 	async fn compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> AggregateTagEventCompressedData {
 		AggregateTagEventCompressedData {
 			brand_id: match partial.brand_id {
-				Partial::Same(x) => self.brand_id_map.get_or_insert(&x).await as u16,
+				Partial::Same(x) => self.brand_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
 			category_id: match partial.category_id {
-				Partial::Same(x) => self.category_id_map.get_or_insert(&x).await as u16,
+				Partial::Same(x) => self.category_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
 			origin_id: match partial.origin_id {
-				Partial::Same(x) => self.origin_id_map.get_or_insert(&x).await as u16,
+				Partial::Same(x) => self.origin_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
 			},
 		}
@@ -219,40 +309,61 @@ impl Compressor<AggregateTagEvent> for LocalDB {
 
 impl PartialCompressor<AggregateTagEvent> for LocalDB {
 	async fn partial_compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> PartialAggregateTagEventCompressedData {
-		todo!()
+		PartialAggregateTagEventCompressedData {
+			brand_id: match partial.brand_id {
+				Partial::Same(x) => self.brand_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			category_id: match partial.category_id {
+				Partial::Same(x) => self.category_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			origin_id: match partial.origin_id {
+				Partial::Same(x) => self.origin_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+		}
 	}
 	
 	async fn update_compression(&self, partial: &PartialAggregateTagEventCompressedData, compressed: &AggregateTagEventCompressedData) {
-		todo!()
+		if let Partial::Same(x) = &partial.brand_id {
+			self.brand_id_map.force_insert_mapping(x, compressed.brand_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.origin_id {
+			self.origin_id_map.force_insert_mapping(x, compressed.origin_id as usize).await;
+		}
+		if let Partial::Same(x) = &partial.category_id {
+			self.category_id_map.force_insert_mapping(x, compressed.category_id as usize).await;
+		}
 	}
 }
 
 impl Compressor<GetAggregateRequest> for LocalDB {
 	async fn compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> GetAggregateRequestCompressedData {
-		let origin = match partial.origin {
+		let origin = match partial.origin_id {
 			Partial::Same(x) => match x {
-				Some(v) => Some(self.origin_id_map.get_or_insert(&v).await as u16),
+				Some(v) => Some(self.origin_id_map.get_or_insert_id(&v).await as u16),
 				None => None,
 			},
 			Partial::Changed(x) => x,
 		};
 		let brand_id = match partial.brand_id {
 			Partial::Same(x) => match x {
-				Some(v) => Some(self.brand_id_map.get_or_insert(&v).await as u16),
+				Some(v) => Some(self.brand_id_map.get_or_insert_id(&v).await as u16),
 				None => None,
 			},
 			Partial::Changed(x) => x,
 		};
 		let category_id = match partial.category_id {
 			Partial::Same(x) => match x {
-				Some(v) => Some(self.category_id_map.get_or_insert(&v).await as u16),
+				Some(v) => Some(self.category_id_map.get_or_insert_id(&v).await as u16),
 				None => None,
 			},
 			Partial::Changed(x) => x,
 		};
 		
 		GetAggregateRequestCompressedData {
-			origin,
+			origin_id: origin,
 			brand_id,
 			category_id,
 		}
@@ -261,11 +372,53 @@ impl Compressor<GetAggregateRequest> for LocalDB {
 
 impl PartialCompressor<GetAggregateRequest> for LocalDB {
 	async fn partial_compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> PartialGetAggregateRequestCompressedData {
-		todo!()
+		PartialGetAggregateRequestCompressedData {
+			brand_id: match partial.brand_id {
+				Partial::Same(x) => match x {
+					Some(v) => self.brand_id_map.try_get_id(&v).await
+						.map_same(|x| Some(x))
+						.map_changed(|x| Some(x as u16)),
+					None => Partial::Changed(None),
+				},
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			category_id: match partial.category_id {
+				Partial::Same(x) => match x {
+					Some(v) => self.category_id_map.try_get_id(&v).await
+						.map_same(|x| Some(x))
+						.map_changed(|x| Some(x as u16)),
+					None => Partial::Changed(None),
+				},
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+			origin_id: match partial.origin_id {
+				Partial::Same(x) => match x {
+					Some(v) => self.origin_id_map.try_get_id(&v).await
+						.map_same(|x| Some(x))
+						.map_changed(|x| Some(x as u16)),
+					None => Partial::Changed(None),
+				},
+				Partial::Changed(x) => Partial::Changed(x),
+			},
+		}
 	}
 	
 	async fn update_compression(&self, partial: &PartialGetAggregateRequestCompressedData, compressed: &GetAggregateRequestCompressedData) {
-		todo!()
+		if let Partial::Same(x) = &partial.brand_id {
+			if let Some(x) = x {
+				self.brand_id_map.force_insert_mapping(x, compressed.brand_id.unwrap() as usize).await;
+			}
+		}
+		if let Partial::Same(x) = &partial.origin_id {
+			if let Some(x) = x {
+				self.origin_id_map.force_insert_mapping(x, compressed.origin_id.unwrap() as usize).await;
+			}
+		}
+		if let Partial::Same(x) = &partial.category_id {
+			if let Some(x) = x {
+				self.category_id_map.force_insert_mapping(x, compressed.category_id.unwrap() as usize).await;
+			}
+		}
 	}
 }
 

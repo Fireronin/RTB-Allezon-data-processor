@@ -63,9 +63,10 @@ pub trait Compress where Self: Sized, Self::PartialCompressedData: From<Self::Fr
 	async fn compress<T: Compressor<Self>>(value: &Self::From, compressor: &T) -> Result<Self>;
 }
 
-pub trait Decompress where Self: Sized {
+pub trait Decompress where Self: Sized, Self::PartialDecompressedData: From<Self>, Self: Clone {
 	type Type;
 	type DecompressedData;
+	type PartialDecompressedData;
 	type AdditionalData;
 	
 	async fn decompress<T: Decompressor<Self>>(&self, decompressor: &T, additional_data: Self::AdditionalData) -> Self::Type;

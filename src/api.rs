@@ -52,14 +52,14 @@ pub struct GetAggregateResponse {
 }
 
 pub struct GetAggregateRequestCompressedData {
-	pub origin: Option<u16>,
+	pub origin_id: Option<u16>,
 	pub brand_id: Option<u16>,
 	pub category_id: Option<u16>,
 }
 
 #[derive(Clone)]
 pub struct PartialGetAggregateRequestCompressedData {
-	pub origin: Partial<Option<String>, Option<u16>>,
+	pub origin_id: Partial<Option<String>, Option<u16>>,
 	pub brand_id: Partial<Option<String>, Option<u16>>,
 	pub category_id: Partial<Option<String>, Option<u16>>,
 }
@@ -67,7 +67,7 @@ pub struct PartialGetAggregateRequestCompressedData {
 impl From<GetAggregateApiRequest> for PartialGetAggregateRequestCompressedData {
 	fn from(value: GetAggregateApiRequest) -> Self {
 		Self {
-			origin: Partial::Same(value.origin),
+			origin_id: Partial::Same(value.origin),
 			brand_id: Partial::Same(value.brand_id),
 			category_id: Partial::Same(value.category_id),
 		}
@@ -86,7 +86,7 @@ impl Compress for GetAggregateRequest {
 				.map(|t| TimeRange { start: t.start / AGGREGATE_BUCKET, end: t.end / AGGREGATE_BUCKET })
 				.unwrap(),
 			action: UserAction::try_from(value.action.as_str()).unwrap(),
-			origin: compressed.origin,
+			origin: compressed.origin_id,
 			brand_id: compressed.brand_id,
 			category_id: compressed.category_id,
 		})
