@@ -21,3 +21,6 @@ surrealdb = { version = "1.4", features = ["protocol-http"] }
 anyhow = "1.0"
 strum = "0.26"
 strum_macros = "0.26"
+sqlx = { version = "0.7.4", features = ["runtime-tokio", "postgres","bigdecimal"] }
+bincode ="1.3"
+bigdecimal = "0.4"
