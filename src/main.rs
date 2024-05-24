@@ -1,10 +1,11 @@
-use std::sync::Arc;
+use std::{future::IntoFuture, sync::Arc};
 
 use actix_web::{App, HttpServer, web};
 
 use endpoints::*;
+use futures::TryFutureExt;
 
-use crate::database::{AerospikeDB, CachedDB, LocalDB};
+use crate::database::{PostgresDB};
 
 mod endpoints;
 mod database;
@@ -14,14 +15,14 @@ pub mod api;
 mod compression;
 
 pub struct AppState {
-	pub database: Arc<CachedDB<LocalDB, AerospikeDB>>,
+	pub database: Arc<PostgresDB>,
 	// pub database: Arc<LocalDB>,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	// let database = Arc::new(LocalDB::new());
-	let database = Arc::new(CachedDB::new(LocalDB::new(), AerospikeDB::new()));
+	let database = Arc::new(PostgresDB::new().await.expect("Failed to create database"));
 	
 	HttpServer::new(move || {
 		App::new()
@@ -31,7 +32,7 @@ async fn main() -> std::io::Result<()> {
 			.service(add_user_tags)
 			.service(user_profiles)
 			.service(aggregates)
-	}).bind(("10.112.103.101", 8083))
+	}).bind(("10.111.255.123", 8082))
 		.expect("Creation of server failed")
 		.run()
 		.await
