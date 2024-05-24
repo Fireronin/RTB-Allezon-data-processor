@@ -193,7 +193,6 @@ impl PostgresDB {
 		for (cookie, tag, action) in data {
 			let time = parse_timestamp(tag.time.as_str()).unwrap();
 			let table = time/60000;
-			let serialized = bincode::serialize(&tag).unwrap();
 			let str: &str = cookie.0.as_str();
 			let price: i64 = tag.product_info.price as i64;
 			sqlx::query(&format!(
@@ -471,64 +470,43 @@ impl Database for PostgresDB {
 			let querry_types_clone = querry_types.clone();
 			let aggregates_clone = Arc::clone(&aggregates); // Clone the Arc
 			handles.push(tokio::spawn(async move {
-				
-				for aggregate_type in querry_types_clone.iter() {
-					let table = format!("aggregate_{}", minute);
-					let aggregate_str = match aggregate_type {
-						AggregateRequestType::Count => "COUNT(*)",
-						AggregateRequestType::Sum => "SUM(price)",
-					};
-					let mut query = format!("SELECT {} FROM {}", aggregate_str, table);
-					let mut binds = vec![];
-					if request_clone.origin.is_some() {
-						query.push_str(format!(" WHERE origin_id = ${}", binds.len() + 1).as_str());
-						binds.push(request_clone.origin.clone().unwrap());
-					}
-					if request_clone.brand_id.is_some() {
-						if binds.len() > 0 {
-							query.push_str(format!(" AND brand_id = ${}", binds.len() + 1).as_str());
-						} else {
-							query.push_str(format!(" WHERE brand_id = ${}", binds.len() + 1).as_str());
-						}
-						binds.push(request_clone.brand_id.clone().unwrap());
-					}
-					if request_clone.category_id.is_some() {
-						if binds.len() > 0 {
-							query.push_str(format!(" AND category_id = ${}", binds.len() + 1).as_str());
-						} else {
-							query.push_str(format!(" WHERE category_id = ${}", binds.len() + 1).as_str());
-						}
-						binds.push(request_clone.category_id.clone().unwrap());
-					}
-					let rows = {
-						let mut rows = sqlx::query(&query);
-						for bind in binds {
-							rows = rows.bind(bind);
-						}
-						rows.fetch_all(&pool_clone).await.unwrap()
-					};
-
-
-					let mut sum = 0;
-					let mut count = 0;
-					for row in rows {
-						let value: i64 = row.get(0);
-						sum += value;
-						count += 1;
-					}
-					let sum : u64 = sum as u64;
-					let count : u64 = count as u64;
-					match aggregate_type {
-						AggregateRequestType::Count => {
-							aggregates_clone.lock().unwrap()[index].count = count;
-						}
-						AggregateRequestType::Sum => {
-							aggregates_clone.lock().unwrap()[index].sum = sum;
-						}
-					}
-					
+			let table = format!("aggregate_{}", minute);
+			let mut query = format!("SELECT COUNT(*),CAST(SUM(price) AS BIGINT) FROM {}", table);
+			let mut binds = vec![];
+			
+			query.push_str(format!(" WHERE action = ${}", binds.len() + 1).as_str());
+			binds.push(request_clone.action.clone());
+			
+			if request_clone.origin.is_some() {
+				query.push_str(format!(" AND origin_id = ${}", binds.len() + 1).as_str());
+				binds.push(request_clone.origin.clone().unwrap());
+			}
+			if request_clone.brand_id.is_some() {
+				query.push_str(format!(" AND brand_id = ${}", binds.len() + 1).as_str());
+				binds.push(request_clone.brand_id.clone().unwrap());
+			}
+			if request_clone.category_id.is_some() {
+				query.push_str(format!(" AND category_id = ${}", binds.len() + 1).as_str());
+				binds.push(request_clone.category_id.clone().unwrap());
+			}
+			
+			let rows = {
+				let mut rows = sqlx::query(&query);
+				for bind in binds {
+					rows = rows.bind(bind);
 				}
-				// update the aggregates
+				rows.fetch_one(&pool_clone).await.unwrap()
+			};
+			let sum  = rows.try_get::<i64, usize>(1);
+			// if no data set sum to 0
+			let sum = match sum {
+				Ok(sum) => sum,
+				Err(_) => 0,
+			};
+			let count = rows.get::<i64, usize>(0);
+
+			aggregates_clone.lock().unwrap()[index].sum = sum as u64;
+			aggregates_clone.lock().unwrap()[index].count = count as u64;
 				
 				
 			}));

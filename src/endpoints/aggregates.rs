@@ -65,35 +65,51 @@ pub async fn aggregates(
 				_ => panic!("Invalid aggregate type"),
 				}).collect::<Vec<AggregateRequestType>>();
 	
-	
-			let time_range: Vec<&str> = request.time_range.split("_").collect();
-			// add Z to the end of the time string to make it RFC3339 compliant
-			let time_range: Vec<String> = time_range.iter().map(|x| x.to_string() + "Z").collect();
-			let start_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[0].as_str()).unwrap().timestamp_millis();
-			let end_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[1].as_str()).unwrap().timestamp_millis();
-		
-			// divide the time range into minutes
-			let start_minute = start_timestamp/60000;
-			let end_minute = end_timestamp/60000;
-		
-			let minutes_to_process = start_minute..end_minute;
+	// print request and response
+	println!("Aggregates");
+	println!("Request: {:?}", aggregates_query_string);
+	println!("Request_body: {:?}", _req_body);
+	let time_range: Vec<&str> = request.time_range.split("_").collect();
+	// add Z to the end of the time string to make it RFC3339 compliant
+	let time_range: Vec<String> = time_range.iter().map(|x| x.to_string() + "Z").collect();
+	let start_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[0].as_str()).unwrap().timestamp_millis();
+	let end_timestamp = chrono::DateTime::parse_from_rfc3339(time_range[1].as_str()).unwrap().timestamp_millis();
+
+	// divide the time range into minutes
+	let start_minute = start_timestamp/60000;
+	let end_minute = end_timestamp/60000;
+
+	let minutes_to_process = start_minute..end_minute;
 		
 	//		async fn get_aggregate_uncompresed(&self, request: &GetAggregateApiRequest,querry_types : Vec<AggregateRequestType>) -> GetAggregateResponse{
 	let mut columns = vec![String::from("1m_bucket"), String::from("action")];
-	
+	// push the origin, brand_id, and category_id if they are present
+	if request.origin.is_some() {
+		columns.push(String::from("origin"));
+	}
+	if request.brand_id.is_some() {
+		columns.push(String::from("brand_id"));
+	}
+	if request.category_id.is_some() {
+		columns.push(String::from("category_id"));
+	}
+	// push the aggregate types
+	for aggregate_type in request_types.iter() {
+		if let AggregateRequestType::Count = aggregate_type {
+			columns.push(String::from("count"));
+		} else {
+			columns.push(String::from("sum_price"));
+		}
+	}
+
+
 	let get_aggregate_response = data.database.get_aggregate_uncompresed(&request, request_types.clone()).await;
 		let rows = get_aggregate_response.aggregates.iter()
 		.enumerate()
 		.map(|(i, value)| {
 			let mut row = Vec::new();
 			//let minute_datetime = chrono::DateTime::from_timestamp_millis(get_aggregate_request.time_range.start + (i as i64) * 60 * 1000).unwrap();
-			let minute_datetime = chrono::DateTime::<chrono::Utc>::from_utc(
-				chrono::NaiveDateTime::from_timestamp(
-					start_timestamp + (i as i64) * 60 * 1000, 
-					0
-				), 
-				chrono::Utc
-			);
+			let minute_datetime = chrono::DateTime::from_timestamp_millis(start_timestamp + (i as i64) * 60 * 1000).unwrap();
 			row.push(minute_datetime.format("%Y-%m-%dT%H:%M:%S").to_string());
 			row.push(request.action.clone());
 			if let Some(value) = &request.origin {
@@ -120,6 +136,11 @@ pub async fn aggregates(
 		rows,
 	};
 	
+
+	let response_json = serde_json::to_string(&response).unwrap();
+	println!("Response: {}", response_json);
+
+
 	Ok(HttpResponse::Ok().json(response))
 
 	//return Ok(HttpResponse::Ok().json("Hello"));
