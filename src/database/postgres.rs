@@ -480,32 +480,31 @@ impl Database for PostgresDB {
 					};
 					let mut query = format!("SELECT {} FROM {}", aggregate_str, table);
 					let mut binds = vec![];
-					
 					if request_clone.origin.is_some() {
-						query.push_str(format!(" WHERE origin_id = {}", request_clone.origin.clone().unwrap()).as_str());
+						query.push_str(format!(" WHERE origin_id = ${}", binds.len() + 1).as_str());
 						binds.push(request_clone.origin.clone().unwrap());
 					}
 					if request_clone.brand_id.is_some() {
 						if binds.len() > 0 {
-							query.push_str(format!(" AND brand_id = {}", request_clone.brand_id.clone().unwrap()).as_str());
+							query.push_str(format!(" AND brand_id = ${}", binds.len() + 1).as_str());
 						} else {
-							query.push_str(format!(" WHERE brand_id = {}", request_clone.brand_id.clone().unwrap()).as_str());
+							query.push_str(format!(" WHERE brand_id = ${}", binds.len() + 1).as_str());
 						}
 						binds.push(request_clone.brand_id.clone().unwrap());
 					}
 					if request_clone.category_id.is_some() {
 						if binds.len() > 0 {
-							query.push_str(format!(" AND category_id = {}", request_clone.category_id.clone().unwrap()).as_str());
+							query.push_str(format!(" AND category_id = ${}", binds.len() + 1).as_str());
 						} else {
-							query.push_str(format!(" WHERE category_id = {}", request_clone.category_id.clone().unwrap()).as_str());
+							query.push_str(format!(" WHERE category_id = ${}", binds.len() + 1).as_str());
 						}
 						binds.push(request_clone.category_id.clone().unwrap());
 					}
 					let rows = {
 						let mut rows = sqlx::query(&query);
-						// for bind in binds {
-						// 	rows = rows.bind(bind);
-						// }
+						for bind in binds {
+							rows = rows.bind(bind);
+						}
 						rows.fetch_all(&pool_clone).await.unwrap()
 					};
 
