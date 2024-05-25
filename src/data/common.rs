@@ -3,7 +3,7 @@ use strum_macros::{EnumString, IntoStaticStr};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct ProductInfo {
-	pub product_id: String,
+	pub product_id: u64,
 	pub brand_id: String,
 	pub category_id: String,
 	pub price: i32,

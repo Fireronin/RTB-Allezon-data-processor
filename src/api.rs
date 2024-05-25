@@ -8,26 +8,6 @@ use crate::endpoints::GetAggregateApiRequest;
 
 pub const MAX_TAGS: usize = 200;
 
-
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct ApiUserTagWorking {
-	pub product_info: ProductInfoWorking,
-	pub time: String,
-	pub cookie: String,
-	pub country: String,
-	pub device: String,
-	pub action: String,
-	pub origin: String,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct ProductInfoWorking {
-	pub product_id: u64,
-	pub brand_id: String,
-	pub category_id: String,
-	pub price: i32,
-}
-
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct ApiUserTag {
 	pub product_info: ProductInfo,
@@ -62,13 +42,13 @@ pub struct GetAggregateRequest {
 	pub category_id: Option<u16>,
 }
 
-#[derive(Default,Clone)]
+#[derive(Default, Clone)]
 pub struct AggregateBucket {
 	pub sum: u64,
 	pub count: u64,
 }
 
-#[derive(EnumString, IntoStaticStr,Clone)]
+#[derive(EnumString, IntoStaticStr, Clone)]
 pub enum AggregateRequestType {
 	Count,
 	Sum,

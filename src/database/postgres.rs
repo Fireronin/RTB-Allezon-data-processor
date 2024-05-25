@@ -1,16 +1,8 @@
 #![allow(unused)]
 use std::sync::{Arc, Mutex};
 
-use crate::api::{
-    AggregateBucket, AggregateRequestType, ApiUserTagWorking, GetAggregateRequest, GetAggregateRequestCompressedData, GetAggregateResponse, PartialGetAggregateRequestCompressedData, MAX_TAGS
-};
-use crate::data::time::{parse_timestamp, TimeRange};
-use crate::data::{
-    AggregateTagEvent, AggregateTagEventCompressedData, Cookie,
-    PartialAggregateTagEventCompressedData, PartialUserTagEventCompressedData, UserAction,
-    UserProfile, UserProfileUncompresed, UserTagEvent, UserTagEventCompressedData,
-    UserTagEventDecompressedData,
-};
+use crate::api::*;
+use crate::data::*;
 use crate::database::Database;
 use crate::GetAggregateApiRequest;
 use futures::Future;
@@ -20,13 +12,13 @@ use surrealdb::method::Set;
 use tokio::sync::mpsc::Receiver;
 
 // use super::Synced;
-use crate::api::ApiUserTag;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::prelude::*;
+use crate::data::time::*;
 
 pub struct PostgresDB {
     pool: PgPool,
-	tx: tokio::sync::mpsc::Sender<(Cookie, ApiUserTagWorking, UserAction)>,
+	tx: tokio::sync::mpsc::Sender<(Cookie, ApiUserTag, UserAction)>,
 }
 
 // #[derive(Debug, Deserialize)]
@@ -157,7 +149,7 @@ impl PostgresDB {
 	// }
 
 	// 
-	async fn add_for_aggregate(&self, data : Vec<(Cookie, ApiUserTagWorking, UserAction)> ) {
+	async fn add_for_aggregate(&self, data : Vec<(Cookie, ApiUserTag, UserAction)> ) {
 		// one for each minute
 		let mut tabes_to_create = vec![];
 
@@ -220,14 +212,14 @@ impl PostgresDB {
 	// write a function that takes mpsc reciver and does
 	async fn add_user_events_batch(
 		&self,
-		mut receiver: Receiver<(Cookie, ApiUserTagWorking, UserAction)>,
+		mut receiver: Receiver<(Cookie, ApiUserTag, UserAction)>,
 	) {
 		let mut buffer = Arc::new(Mutex::new(Vec::new()));
 		while let Some((cookie, tag, action)) = receiver.recv().await {
 			buffer.lock().unwrap().push((cookie, tag, action));
 			if buffer.lock().unwrap().len() >= 100 {
 				let pool = self.pool.clone();
-				let buffer_clone : Vec<(Cookie, ApiUserTagWorking, UserAction)> = buffer.lock().unwrap().clone();
+				let buffer_clone : Vec<(Cookie, ApiUserTag, UserAction)> = buffer.lock().unwrap().clone();
 				self.add_for_aggregate(buffer_clone.clone()).await;
 				tokio::spawn(async move {
 					let mut tx = pool.begin().await.unwrap();
@@ -286,7 +278,7 @@ impl Database for PostgresDB {
     async fn add_user_event_uncompresed(
         &self,
         cookie: &Cookie,
-        tag: ApiUserTagWorking,
+        tag: ApiUserTag,
         action: UserAction,
     ) {
 		let result = self.tx.send((cookie.clone(), tag.clone(), action)).await;
@@ -341,7 +333,7 @@ impl Database for PostgresDB {
 
     async fn get_user_profile_uncompresed(&self, cookie: &Cookie) -> UserProfileUncompresed {
         // get from both tables based on cookie and deserialize
-        let mut view_tags: Vec<ApiUserTagWorking> =
+        let mut view_tags: Vec<ApiUserTag> =
             sqlx::query("SELECT value FROM view_tags WHERE key = $1")
                 .bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
@@ -353,7 +345,7 @@ impl Database for PostgresDB {
                     bincode::deserialize(&bytes).unwrap()
                 })
                 .collect();
-        let mut buy_tags: Vec<ApiUserTagWorking> =
+        let mut buy_tags: Vec<ApiUserTag> =
             sqlx::query("SELECT value FROM buy_tags WHERE key = $1")
                 .bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
@@ -380,9 +372,9 @@ impl Database for PostgresDB {
         });
 
         // get the latest MAX_TAGS
-        let view_tags_taken: Vec<ApiUserTagWorking> =
+        let view_tags_taken: Vec<ApiUserTag> =
             view_tags.clone().into_iter().rev().take(MAX_TAGS).collect();
-        let buy_tags_taken: Vec<ApiUserTagWorking> =
+        let buy_tags_taken: Vec<ApiUserTag> =
             buy_tags.clone().into_iter().rev().take(MAX_TAGS).collect();
 
         // send request to drop the rest
@@ -390,12 +382,12 @@ impl Database for PostgresDB {
             .into_iter()
             .rev()
             .skip(MAX_TAGS)
-            .collect::<Vec<ApiUserTagWorking>>();
+            .collect::<Vec<ApiUserTag>>();
         let buy_tags_to_drop = buy_tags
             .into_iter()
             .rev()
             .skip(MAX_TAGS)
-            .collect::<Vec<ApiUserTagWorking>>();
+            .collect::<Vec<ApiUserTag>>();
 
         // drop the rest
         //if (view_tags_to_drop.len() > 0 || buy_tags_to_drop.len() > 0) {
