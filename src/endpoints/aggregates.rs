@@ -1,4 +1,4 @@
-use std::str::from_utf8;
+use std::str::{from_utf8, FromStr};
 
 use actix_web::{HttpRequest, HttpResponse, post, Responder, Result, web};
 use serde::{Deserialize, Serialize};
@@ -33,23 +33,31 @@ pub async fn aggregates(
 	
 	let x = DuplicateQS::parse(aggregates_query_string.query_string().as_bytes())
 		.values(b"aggregates")
-		.ok_or("`aggregates` not in request")
-		.map(|x| {
+		.ok_or(String::from("`aggregates` not in request"))
+		.and_then(|x| {
 			x.iter()
 				.map(|x| {
 					let bytes: &[u8] = x.as_ref().unwrap();
-					from_utf8(bytes).unwrap().try_into().unwrap()
+					let utf8_bytes = from_utf8(bytes).unwrap();
+					AggregateRequestType::from_str(utf8_bytes)
+						.map_err(|e: strum::ParseError| format!("Cannot find {}", utf8_bytes))
 				})
 				.collect()
 		});
 	let request_types: Vec<AggregateRequestType> = match x {
 		Ok(x) => x,
-		Err(e) => return Ok(HttpResponse::BadRequest().body(e)),
+		Err(e) => {
+			println!("Error {e}");
+			return Ok(HttpResponse::BadRequest().body(e));
+		},
 	};
 	
 	let time_range = match time::TimeRange::new(request.time_range.as_str()) {
 		Ok(x) => x,
-		Err(e) => return Ok(HttpResponse::BadRequest().body(e.to_string())),
+		Err(e) => {
+			println!("Error {}", e.to_string());
+			return Ok(HttpResponse::BadRequest().body(e.to_string()));
+		},
 	};
 	
 	let mut columns = vec![String::from("1m_bucket"), String::from("action")];

@@ -50,7 +50,9 @@ pub struct AggregateBucket {
 
 #[derive(EnumString, IntoStaticStr, Clone)]
 pub enum AggregateRequestType {
+	#[strum(serialize = "COUNT")]
 	Count,
+	#[strum(serialize = "SUM_PRICE")]
 	Sum,
 }
 
