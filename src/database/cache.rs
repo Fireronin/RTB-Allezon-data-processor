@@ -47,8 +47,8 @@ impl<L: CompressingDB, T: SyncedDB> Database for CachedDB<L, T> {
 	}
 }
 
-impl<L: CompressingDB + PartialCompressor<UserTagEvent>, T: SyncedDB + Compressor<UserTagEvent>> Compressor<UserTagEvent> for CachedDB<L, T> {
-	async fn compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventCompressedData {
+impl<X: Compress, L: CompressingDB + PartialCompressor<X>, T: SyncedDB + Compressor<X>> Compressor<X> for CachedDB<L, T> {
+	async fn compress_with_partial(&self, partial: X::PartialCompressedData) -> X::CompressedData {
 		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
 		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
 		self.local_db.update_compression(&compressed_locally, &compressed).await;
@@ -56,39 +56,19 @@ impl<L: CompressingDB + PartialCompressor<UserTagEvent>, T: SyncedDB + Compresso
 	}
 }
 
-impl<L: CompressingDB + PartialDecompressor<UserTagEvent>, T: SyncedDB + Decompressor<UserTagEvent>> Decompressor<UserTagEvent> for CachedDB<L, T> {
-	async fn decompress(&self, value: &UserTagEvent) -> UserTagEventDecompressedData {
-		let partial = PartialUserTagEventCompressedData::from(value.clone());
+impl<X: Decompress, L: CompressingDB + PartialDecompressor<X>, T: SyncedDB + Decompressor<X>> Decompressor<X> for CachedDB<L, T> {
+	async fn decompress(&self, value: &X) -> X::DecompressedData {
+		let partial = X::PartialDecompressedData::from(value.clone());
 		let decompressed_locally = self.local_db.partial_decompress_with_partial(partial).await;
 		let decompressed = self.remote_db.decompress_with_partial(decompressed_locally.clone()).await;
 		self.local_db.update_compression(&decompressed_locally, &value).await;
 		decompressed
 	}
-	
+
 	// Does not update local compression database
-	async fn decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventDecompressedData {
-		// let partial = PartialUserTagEventCompressedData::from(value.clone());
+	async fn decompress_with_partial(&self, partial: X::PartialDecompressedData) -> X::DecompressedData {
 		let decompressed_locally = self.local_db.partial_decompress_with_partial(partial).await;
 		let decompressed = self.remote_db.decompress_with_partial(decompressed_locally.clone()).await;
-		// self.local_db.update_compression(&decompressed_locally, &value).await;
 		decompressed
-	}
-}
-
-impl<L: CompressingDB + PartialCompressor<AggregateTagEvent>, T: SyncedDB + Compressor<AggregateTagEvent>> Compressor<AggregateTagEvent> for CachedDB<L, T> {
-	async fn compress_with_partial(&self, partial: PartialAggregateTagEventCompressedData) -> AggregateTagEventCompressedData {
-		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
-		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
-		self.local_db.update_compression(&compressed_locally, &compressed).await;
-		compressed
-	}
-}
-
-impl<L: CompressingDB + PartialCompressor<GetAggregateRequest>, T: SyncedDB + Compressor<GetAggregateRequest>> Compressor<GetAggregateRequest> for CachedDB<L, T> {
-	async fn compress_with_partial(&self, partial: PartialGetAggregateRequestCompressedData) -> GetAggregateRequestCompressedData {
-		let compressed_locally = self.local_db.partial_compress_with_partial(partial).await;
-		let compressed = self.remote_db.compress_with_partial(compressed_locally.clone()).await;
-		self.local_db.update_compression(&compressed_locally, &compressed).await;
-		compressed
 	}
 }

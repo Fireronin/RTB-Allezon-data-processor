@@ -55,7 +55,7 @@ impl<T, V> Partial<T, V> {
 	}
 }
 
-pub trait Compress where Self: Sized, Self::PartialCompressedData: From<Self::From>, Self::From: Clone {
+pub trait Compress where Self: Sized, Self::PartialCompressedData: From<Self::From> + Clone, Self::From: Clone {
 	type From;
 	type CompressedData;
 	type PartialCompressedData;
@@ -63,7 +63,7 @@ pub trait Compress where Self: Sized, Self::PartialCompressedData: From<Self::Fr
 	async fn compress<T: Compressor<Self>>(value: &Self::From, compressor: &T) -> Result<Self>;
 }
 
-pub trait Decompress where Self: Sized, Self::PartialDecompressedData: From<Self>, Self: Clone {
+pub trait Decompress where Self: Sized, Self::PartialDecompressedData: From<Self> + Clone, Self: Clone {
 	type Type;
 	type DecompressedData;
 	type PartialDecompressedData;

@@ -1,5 +1,4 @@
-use actix_web::{HttpResponse, post, Responder, web, Result};
-use actix_web::http::StatusCode;
+use actix_web::{HttpResponse, post, web};
 use serde::{Deserialize, Serialize};
 
 use crate::api::*;
@@ -7,7 +6,6 @@ use crate::AppState;
 use crate::data::*;
 use crate::data::time::*;
 use crate::database::{Database, Decompressor};
-use crate::endpoints::utils::IntoHttpError;
 
 #[derive(Deserialize, Serialize)]
 struct UserProfileApiRequest {
@@ -37,10 +35,10 @@ async fn filter_tags<T: Decompressor<UserTagEvent>>(decompressor: &T, mut user_t
 }
 
 #[post("/user_profiles/{cookie}")]
-pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> Result<impl Responder> {
+pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> HttpResponse {
 	let request = GetUserProfileRequest {
 		cookie: Cookie(cookie.into_inner()),
-		time_range: TimeRange::new(info.time_range.as_str()).map_error(StatusCode::BAD_REQUEST)?,
+		time_range: TimeRange::new(info.time_range.as_str()).unwrap(),
 		limit: match info.limit {
 			Some(limit) => limit as usize,
 			None => MAX_TAGS,
@@ -55,6 +53,6 @@ pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie:
 		buys: filter_tags(data.database.as_ref(), user_profile.buy_events, &request, UserAction::BUY).await,
 	};
 
-	Ok(HttpResponse::Ok().json(response))
+	HttpResponse::Ok().json(response)
 }
 

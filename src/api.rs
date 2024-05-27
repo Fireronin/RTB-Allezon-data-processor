@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use strum_macros::{Display, EnumString};
 
 use crate::data::{AGGREGATE_BUCKET, AggregateTagEvent, Compress, Cookie, Partial, ProductInfo, UserAction, UserProfile};
 use crate::data::time::TimeRange;
@@ -39,6 +40,14 @@ pub struct GetAggregateRequest {
 	pub origin: Option<u16>,
 	pub brand_id: Option<u16>,
 	pub category_id: Option<u16>,
+}
+
+#[derive(EnumString, Display, Clone)]
+pub enum AggregateRequestType {
+	#[strum(serialize = "COUNT", to_string="count")]
+	Count,
+	#[strum(serialize = "SUM_PRICE", to_string="sum_price")]
+	Sum,
 }
 
 #[derive(Default)]

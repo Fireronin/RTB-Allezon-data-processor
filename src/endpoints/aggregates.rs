@@ -1,10 +1,9 @@
-use std::str::from_utf8;
+use std::str::{from_utf8, FromStr};
 
 use actix_web::{HttpRequest, HttpResponse, post, Responder, Result, web};
 use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_querystring::DuplicateQS;
-use strum_macros::{EnumString, IntoStaticStr};
 
 use crate::api::*;
 use crate::AppState;
@@ -27,16 +26,10 @@ struct GetAggregateApiResponse {
 	rows: Vec<Vec<String>>,
 }
 
-#[derive(EnumString, IntoStaticStr)]
-enum AggregateRequestType {
-	Count,
-	Sum,
-}
-
 #[post("/aggregates")]
 pub async fn aggregates(
 	data: web::Data<AppState>,
-	_req_body: String,
+	req_body: String,
 	request: web::Query<GetAggregateApiRequest>,
 	aggregates_query_string: HttpRequest) -> Result<impl Responder> {
 
@@ -48,7 +41,10 @@ pub async fn aggregates(
 			.iter()
 			.map(|x| {
 				let bytes: &[u8] = x.as_ref().unwrap();
-				from_utf8(bytes).unwrap().try_into().unwrap()
+				let utf8_bytes = from_utf8(bytes).unwrap();
+				AggregateRequestType::from_str(utf8_bytes)
+					.map_err(|_| format!("Cannot find {}", utf8_bytes))
+					.unwrap()
 			})
 			.collect();
 	
@@ -71,14 +67,14 @@ pub async fn aggregates(
 		columns.push(String::from("category_id"));
 	}
 	for aggregate_type in request_types.iter() {
-		columns.push(Into::<&'static str>::into(aggregate_type).to_string());
+		columns.push(aggregate_type.to_string());
 	}
 
 	let rows = response.aggregates.iter()
 		.enumerate()
 		.map(|(i, value)| {
 			let mut row = Vec::new();
-			let minute_datetime = chrono::DateTime::from_timestamp_millis(get_aggregate_request.time_range.start + (i as i64) * 60 * 1000).unwrap();
+			let minute_datetime = chrono::DateTime::from_timestamp_millis(get_aggregate_request.time_range.start * AGGREGATE_BUCKET + (i as i64) * 60 * 1000).unwrap();
 			row.push(minute_datetime.format("%Y-%m-%dT%H:%M:%S").to_string());
 			row.push(request.action.clone());
 			if let Some(value) = &request.origin {
@@ -104,6 +100,12 @@ pub async fn aggregates(
 		columns,
 		rows,
 	};
-	
+
+	let sending = serde_json::to_string(&response).unwrap();
+	if req_body != sending {
+		log::debug!("Expected {}", &req_body);
+		log::debug!("Sending  {}", &sending);
+	}
+
 	Ok(HttpResponse::Ok().json(response))
 }

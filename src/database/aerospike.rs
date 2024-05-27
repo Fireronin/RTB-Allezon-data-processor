@@ -219,7 +219,7 @@ impl Database for AerospikeDB {
 		
 		let tag_list = result.bins.get(Self::TAG_BIN);
 		
-		println!("Tag list {:?}", tag_list);
+		log::debug!("Tag list {:?}", tag_list);
 		
 		todo!()
 	}
@@ -230,7 +230,6 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 		let key = as_key!(Self::NAMESPACE, Self::MAPPINGS_SET, Self::EMPTY_KEY);
 		
 		let mut operations_definitions = vec![];
-		self.add_or_get_mapping(&partial.product_id, Self::PRODUCT_ID_BIN, &mut operations_definitions);
 		self.add_or_get_mapping(&partial.brand_id, Self::BRAND_ID_BIN, &mut operations_definitions);
 		self.add_or_get_mapping(&partial.category_id, Self::CATEGORY_ID_BIN, &mut operations_definitions);
 		self.add_or_get_mapping(&partial.country_id, Self::COUNTRY_BIN, &mut operations_definitions);
@@ -241,7 +240,6 @@ impl Compressor<UserTagEvent> for AerospikeDB {
 		let result = self.operate(&key, &operations);
 		
 		UserTagEventCompressedData {
-			product_id: retrieve_value_from_mapping_result(Self::PRODUCT_ID_BIN, &result) as u64,
 			brand_id: retrieve_value_from_mapping_result(Self::BRAND_ID_BIN, &result) as u16,
 			category_id: retrieve_value_from_mapping_result(Self::CATEGORY_ID_BIN, &result) as u16,
 			country_id: retrieve_value_from_mapping_result(Self::COUNTRY_BIN, &result) as u8,

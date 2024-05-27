@@ -21,7 +21,6 @@ pub struct UserTagEvent {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct UserTagEventCompressedData {
-	pub product_id: u64,
 	pub brand_id: u16,
 	pub category_id: u16,
 	pub country_id: u8,
@@ -30,7 +29,6 @@ pub struct UserTagEventCompressedData {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PartialUserTagEventCompressedData {
-	pub product_id: Partial<String, u64>,
 	pub brand_id: Partial<String, u16>,
 	pub category_id: Partial<String, u16>,
 	pub country_id: Partial<String, u8>,
@@ -39,7 +37,6 @@ pub struct PartialUserTagEventCompressedData {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct UserTagEventDecompressedData {
-	pub product_id: String,
 	pub brand_id: String,
 	pub category_id: String,
 	pub country_id: String,
@@ -49,7 +46,6 @@ pub struct UserTagEventDecompressedData {
 impl From<ApiUserTag> for PartialUserTagEventCompressedData {
 	fn from(value: ApiUserTag) -> Self {
 		Self {
-			product_id: Partial::Same(value.product_info.product_id),
 			brand_id: Partial::Same(value.product_info.brand_id),
 			category_id: Partial::Same(value.product_info.category_id),
 			country_id: Partial::Same(value.country),
@@ -61,7 +57,6 @@ impl From<ApiUserTag> for PartialUserTagEventCompressedData {
 impl From<UserTagEvent> for PartialUserTagEventCompressedData {
 	fn from(value: UserTagEvent) -> Self {
 		Self {
-			product_id: Partial::Changed(value.product_id),
 			brand_id: Partial::Changed(value.brand_id),
 			category_id: Partial::Changed(value.category_id),
 			country_id: Partial::Changed(value.country_id),
@@ -78,7 +73,7 @@ impl Compress for UserTagEvent {
 	async fn compress<T: Compressor<UserTagEvent>>(value: &ApiUserTag, compressor: &T) -> Result<UserTagEvent> {
 		let compressed_data = compressor.compress(value).await;
 		Ok(UserTagEvent {
-			product_id: compressed_data.product_id,
+			product_id: value.product_info.product_id,
 			brand_id: compressed_data.brand_id,
 			category_id: compressed_data.category_id,
 			country_id: compressed_data.country_id,
@@ -100,7 +95,7 @@ impl Decompress for UserTagEvent {
 		let decompressed_data = decompressor.decompress(self).await;
 		ApiUserTag {
 			product_info: ProductInfo {
-				product_id: decompressed_data.product_id,
+				product_id: self.product_id,
 				brand_id: decompressed_data.brand_id,
 				category_id: decompressed_data.category_id,
 				price: self.price,

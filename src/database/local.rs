@@ -59,8 +59,7 @@ struct AggregateHolder {
 pub struct LocalDB {
 	user_profiles: DashMap<Cookie, UserProfile>,
 	aggregates: RwLock<AggregateHolder>,
-	
-	product_id_map: Mapper,
+
 	origin_id_map: Mapper,
 	brand_id_map: Mapper,
 	country_id_map: Mapper,
@@ -72,7 +71,6 @@ impl LocalDB {
 		Self {
 			user_profiles: Default::default(),
 			aggregates: Default::default(),
-			product_id_map: Default::default(),
 			origin_id_map: Default::default(),
 			brand_id_map: Default::default(),
 			country_id_map: Default::default(),
@@ -109,7 +107,14 @@ impl Database for LocalDB {
 			writer.start_timestamp = Some(timestamp);
 		}
 		let bucket = (timestamp - writer.start_timestamp.unwrap()) as usize;
-		writer.events.get_mut(bucket).unwrap().push(tag);
+		let bucket = match writer.events.get_mut(bucket) {
+			Some(x) => x,
+			None => {
+				writer.events.resize_with(bucket + 1, Vec::new);
+				writer.events.last_mut().unwrap()
+			}
+		};
+		bucket.push(tag);
 	}
 	
 	async fn get_aggregate(&self, request: &GetAggregateRequest) -> GetAggregateResponse {
@@ -147,10 +152,6 @@ impl Database for LocalDB {
 impl Compressor<UserTagEvent> for LocalDB {
 	async fn compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventCompressedData {
 		UserTagEventCompressedData {
-			product_id: match partial.product_id {
-				Partial::Same(x) => self.product_id_map.get_or_insert_id(&x).await as u64,
-				Partial::Changed(x) => x,
-			},
 			brand_id: match partial.brand_id {
 				Partial::Same(x) => self.brand_id_map.get_or_insert_id(&x).await as u16,
 				Partial::Changed(x) => x,
@@ -174,10 +175,6 @@ impl Compressor<UserTagEvent> for LocalDB {
 impl PartialCompressor<UserTagEvent> for LocalDB {
 	async fn partial_compress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> PartialUserTagEventCompressedData {
 		PartialUserTagEventCompressedData {
-			product_id: match partial.product_id {
-				Partial::Same(x) => self.product_id_map.try_get_id(&x).await.map_changed(|x| x as u64),
-				Partial::Changed(x) => Partial::Changed(x),
-			},
 			brand_id: match partial.brand_id {
 				Partial::Same(x) => self.brand_id_map.try_get_id(&x).await.map_changed(|x| x as u16),
 				Partial::Changed(x) => Partial::Changed(x),
@@ -210,19 +207,12 @@ impl PartialCompressor<UserTagEvent> for LocalDB {
 		if let Partial::Same(x) = &partial.country_id {
 			self.country_id_map.force_insert_mapping(x, compressed.country_id as usize).await;
 		}
-		if let Partial::Same(x) = &partial.product_id {
-			self.product_id_map.force_insert_mapping(x, compressed.product_id as usize).await;
-		}
 	}
 }
 
 impl Decompressor<UserTagEvent> for LocalDB {
 	async fn decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> UserTagEventDecompressedData {
 		UserTagEventDecompressedData {
-			product_id: match partial.product_id {
-				Partial::Same(x) => x,
-				Partial::Changed(x) => self.product_id_map.get_string(x as usize).await.unwrap(),
-			},
 			brand_id: match partial.brand_id {
 				Partial::Same(x) => x,
 				Partial::Changed(x) => self.brand_id_map.get_string(x as usize).await.unwrap(),
@@ -246,10 +236,6 @@ impl Decompressor<UserTagEvent> for LocalDB {
 impl PartialDecompressor<UserTagEvent> for LocalDB {
 	async fn partial_decompress_with_partial(&self, partial: PartialUserTagEventCompressedData) -> PartialUserTagEventCompressedData {
 		PartialUserTagEventCompressedData {
-			product_id: match partial.product_id {
-				Partial::Same(x) => Partial::Same(x),
-				Partial::Changed(x) => self.product_id_map.try_get_string(x as usize).await.map_changed(|x| x as u64),
-			},
 			brand_id: match partial.brand_id {
 				Partial::Same(x) => Partial::Same(x),
 				Partial::Changed(x) => self.brand_id_map.try_get_string(x as usize).await.map_changed(|x| x as u16),
@@ -281,9 +267,6 @@ impl PartialDecompressor<UserTagEvent> for LocalDB {
 		}
 		if let Partial::Same(x) = &partial.country_id {
 			self.country_id_map.force_insert_mapping(x, compressed.country_id as usize).await;
-		}
-		if let Partial::Same(x) = &partial.product_id {
-			self.product_id_map.force_insert_mapping(x, compressed.product_id as usize).await;
 		}
 	}
 }
