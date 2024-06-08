@@ -28,7 +28,7 @@ pub struct PostgresDB {
 // 	id: Thing,
 // 	tags: Vec<UserTagEvent>
 // }
-const MAX_SHARD: u64 = 1000;
+const MAX_SHARD: u64 = 500;
 fn hash_string(s: &str) -> i32 {
 	
 	use std::collections::hash_map::DefaultHasher;
@@ -41,16 +41,15 @@ fn hash_string(s: &str) -> i32 {
 
 }
 
-
 impl PostgresDB {
     pub async fn new() -> Result<Self, anyhow::Error> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect("postgres://postgres:root@127.0.0.1:5432")
+            .connect("postgres://postgres:root@10.112.123.104:5432")
             .await?;
 		let poolAggregate = PgPoolOptions::new()
 			.max_connections(5)
-			.connect("postgres://postgres:root@127.0.0.1:5432")
+			.connect("postgres://postgres:root@10.112.123.103:5432")
 			.await?;
         // clear tables
         sqlx::query("DROP TABLE IF EXISTS view_tags")
@@ -390,7 +389,7 @@ impl Database for PostgresDB {
     async fn get_user_profile_uncompresed(&self, cookie: &Cookie) -> UserProfileUncompresed {
         // get from both tables based on cookie and deserialize
         let mut view_tags: Vec<ApiUserTag> =
-            sqlx::query("SELECT value FROM view_tags WHERE shard = $1 AND key = $2 ")
+            sqlx::query(&format!("SELECT value FROM view_tags_{} WHERE shard = $1 AND key = $2 ",hash_string(cookie.0.as_str())))
                 .bind(hash_string(cookie.0.as_str()))
 				.bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
@@ -403,7 +402,7 @@ impl Database for PostgresDB {
                 })
                 .collect();
         let mut buy_tags: Vec<ApiUserTag> =
-            sqlx::query("SELECT value FROM buy_tags WHERE shard = $1 AND key = $2")
+            sqlx::query(&format!("SELECT value FROM buy_tags_{} WHERE shard = $1 AND key = $2",hash_string(cookie.0.as_str())))
                 .bind(hash_string(cookie.0.as_str()))
 				.bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
@@ -457,8 +456,9 @@ impl Database for PostgresDB {
             let mut tx = pool.begin().await.unwrap();
 
             for tag in view_tags_to_drop {
-                sqlx::query("DELETE FROM view_tags WHERE key = $1 AND timestamp = $2")
-                    .bind(cookie_clone.0.as_str())
+                sqlx::query("DELETE FROM view_tags WHERE shard = $1 AND key = $2 AND timestamp = $3")
+                    .bind(hash_string(cookie_clone.0.as_str()))
+					.bind(cookie_clone.0.as_str())
                     .bind(parse_timestamp(&tag.time).unwrap())
                     .execute(&mut *tx)
                     .await
@@ -466,8 +466,9 @@ impl Database for PostgresDB {
             }
 
             for tag in buy_tags_to_drop {
-                sqlx::query("DELETE FROM buy_tags WHERE key = $1 AND timestamp = $2")
-                    .bind(cookie_clone.0.as_str())
+                sqlx::query("DELETE FROM buy_tags WHERE shard = $1 AND key = $2 AND timestamp = $3")
+					.bind(hash_string(cookie_clone.0.as_str()))    
+					.bind(cookie_clone.0.as_str())
                     .bind(parse_timestamp(&tag.time).unwrap())
                     .execute(&mut *tx)
                     .await
