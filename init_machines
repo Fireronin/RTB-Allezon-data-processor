@@ -1,0 +1,22 @@
+for i in `seq -w 01 10`; do sshpass -p $(cat passwrd) ssh st123@st123vm1$i.rtb-lab.pl -o StrictHostKeyChecking=no -C "/bin/true"; done
+
+ansible docker -m ping  --extra-vars "ansible_user=st123 ansible_password=$(cat passwrd)"
+
+ansible-playbook --extra-vars "ansible_user=st123 ansible_password=$(cat passwrd)" docker-playbook.yaml
+
+
+# using scp copy current directory to remote host to ~/rtb directory to vm101 
+# Copy the current directory to the remote host
+sshpass -p $(cat passwrd) scp -r $(pwd) st123@st123vm101.rtb-lab.pl:~/rtb
+
+rsync -av --progress --exclude=target $(pwd) st123@st123vm101.rtb-lab.pl:~/rtb
+
+
+
+# connect to vm103 and run docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres , then print ip address of vm103
+sshpass -p $(cat passwrd) ssh st123@st123vm103.rtb-lab.pl -o StrictHostKeyChecking=no -C "sudo docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres"
+sshpass -p $(cat passwrd) ssh st123@st123vm104.rtb-lab.pl -o StrictHostKeyChecking=no -C "sudo docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres"
+
+# Print the IP address of vm103
+dig +short st123vm103.rtb-lab.pl
+dig +short st123vm104.rtb-lab.pl

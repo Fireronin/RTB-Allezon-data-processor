@@ -1,4 +1,5 @@
 #![allow(unused)]
+use core::hash;
 use std::sync::{Arc, Mutex};
 
 use crate::api::*;
@@ -8,7 +9,6 @@ use crate::GetAggregateApiRequest;
 use futures::Future;
 use rayon::vec;
 use serde::Deserialize;
-use surrealdb::method::Set;
 use tokio::sync::mpsc::Receiver;
 
 // use super::Synced;
@@ -18,6 +18,7 @@ use crate::data::time::*;
 
 pub struct PostgresDB {
     pool: PgPool,
+	poolAggregate: PgPool,
 	tx: tokio::sync::mpsc::Sender<(Cookie, ApiUserTag, UserAction)>,
 }
 
@@ -27,12 +28,30 @@ pub struct PostgresDB {
 // 	id: Thing,
 // 	tags: Vec<UserTagEvent>
 // }
+const MAX_SHARD: u64 = 1000;
+fn hash_string(s: &str) -> i32 {
+	
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::{Hash, Hasher};
+
+	let mut hasher = DefaultHasher::new();
+	s.hash(&mut hasher);
+	let out = hasher.finish();
+	(out % MAX_SHARD) as i32
+
+}
+
+
 impl PostgresDB {
     pub async fn new() -> Result<Self, anyhow::Error> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect("postgres://postgres:root@127.0.0.1:5432")
             .await?;
+		let poolAggregate = PgPoolOptions::new()
+			.max_connections(5)
+			.connect("postgres://postgres:root@127.0.0.1:5432")
+			.await?;
         // clear tables
         sqlx::query("DROP TABLE IF EXISTS view_tags")
             .execute(&pool)
@@ -43,6 +62,17 @@ impl PostgresDB {
 
 		// find and drop all tables that start with aggregate_
 		let tables = sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'aggregate_%'")
+			.fetch_all(&poolAggregate)
+			.await?;
+		for table in tables {
+			sqlx::query(&format!("DROP TABLE IF EXISTS {}", table.get::<String, &str>("table_name")))
+				.execute(&poolAggregate)
+				.await?;
+		}
+		println!("dropped tables Aggregate");
+
+		// drop all tables that start with view_tags_
+		let tables = sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'view_tags_%'")
 			.fetch_all(&pool)
 			.await?;
 		for table in tables {
@@ -50,20 +80,44 @@ impl PostgresDB {
 				.execute(&pool)
 				.await?;
 		}
+		println!("dropped tables View Tags");
+
+		// drop all tables that start with buy_tags_
+		let tables = sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'buy_tags_%'")
+			.fetch_all(&pool)
+			.await?;
+		for table in tables {
+			sqlx::query(&format!("DROP TABLE IF EXISTS {}", table.get::<String, &str>("table_name")))
+				.execute(&pool)
+				.await?;
+		}
+		println!("dropped tables Buy Tags");
+
 
 
         sqlx::query(
             "
 			CREATE TABLE IF NOT EXISTS view_tags (
-				key TEXT,  
+				key TEXT,
+				shard INT,  
 				timestamp BIGINT, 
 				value BYTEA,
-				PRIMARY KEY (key, timestamp)
-			)
+				PRIMARY KEY (key,shard, timestamp)
+			) PARTITION BY RANGE (shard)
 		",
         )
         .execute(&pool)
         .await?;
+
+		// create subtables for view_tags based on the shard , max shard is MAX_SHARD
+		let mut tx = pool.begin().await?;
+
+		for i in 0..MAX_SHARD {
+			sqlx::query(&format!("CREATE TABLE IF NOT EXISTS view_tags_{} PARTITION OF view_tags FOR VALUES FROM ({}) TO ({})", i, i, i+1))
+				.execute(&mut *tx).await;
+		}
+		
+		tx.commit().await?;
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS view_tags_key_idx ON view_tags(key)",
@@ -71,46 +125,47 @@ impl PostgresDB {
         .execute(&pool)
         .await?;
 
-        sqlx::query(
-            "CLUSTER view_tags USING view_tags_key_idx",)
-        .execute(&pool)
-        .await?;
+		println!("created tables View Tags");
+
         sqlx::query(
             "
 			CREATE TABLE IF NOT EXISTS buy_tags (
-				key TEXT, 
+				key TEXT,
+				shard INT,  
 				timestamp BIGINT, 
 				value BYTEA,
-				PRIMARY KEY (key, timestamp)
-			)
+				PRIMARY KEY (key,shard, timestamp)
+			) PARTITION BY RANGE (shard)
 		",
         )
         .execute(&pool)
         .await?;
+
+		// create subtables for buy_tags based on the shard , max shard is MAX_SHARD
+		for i in 0..MAX_SHARD {
+			sqlx::query(&format!("CREATE TABLE IF NOT EXISTS buy_tags_{} PARTITION OF buy_tags FOR VALUES FROM ({}) TO ({})", i, i, i+1)).execute(&pool).await?;
+		}
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS buy_tags_key_idx ON buy_tags(key)",)
         .execute(&pool)
         .await?;
 
-        sqlx::query(
-            "CLUSTER buy_tags USING buy_tags_key_idx",)
-        .execute(&pool)
-        .await?;
 
         println!("created tables");
 		let (tx, rx) = tokio::sync::mpsc::channel(20000);
 		// create a thread that will take from rx and insert into db add_user_events_batch
 		let pool_clone = pool.clone();
+		let pool_agregate_clone = poolAggregate.clone();
 		let tx_clone = tx.clone();
 		
 		tokio::spawn(async move {
-			let db = PostgresDB { pool: pool_clone, tx: tx_clone };
+			let db = PostgresDB { pool: pool_clone, poolAggregate:pool_agregate_clone, tx : tx_clone };
 			db.add_user_events_batch(rx).await;
 		});
 		
 
-        Ok(Self { pool , tx})
+        Ok(Self { pool,poolAggregate, tx})
     }
 
     async fn compress(
@@ -175,13 +230,13 @@ impl PostgresDB {
 				",
 				table
 			))
-			.execute(&self.pool)
+			.execute(&self.poolAggregate)
 			.await
 			.unwrap();
 		}
 		// for each data point insert it into the table with the timestamp rounded to the minute
 		// do this in one transaction
-		let mut tx = self.pool.begin().await.unwrap();
+		let mut tx = self.poolAggregate.begin().await.unwrap();
 		for (cookie, tag, action) in data {
 			let time = parse_timestamp(tag.time.as_str()).unwrap();
 			let table = time/60000;
@@ -232,10 +287,11 @@ impl PostgresDB {
 						let str: &str = cookie.0.as_str();
 						let time = parse_timestamp(tag.time.as_str()).unwrap();
 						sqlx::query(&format!(
-							"INSERT INTO {} (key, timestamp, value) VALUES ($1, $2, $3)",
+							"INSERT INTO {} (key,shard, timestamp, value) VALUES ($1,$2, $3, $4)",
 							table
 						))
 						.bind(str)
+						.bind(hash_string(str))
 						.bind(time)
 						.bind(serialized)
 						.execute(&mut *tx)
@@ -253,26 +309,26 @@ impl PostgresDB {
 
 impl Database for PostgresDB {
     async fn add_user_event(&self, cookie: &Cookie, tag: UserTagEvent, action: UserAction) {
-        let table = match action {
-            UserAction::VIEW => "view_tags",
-            UserAction::BUY => "buy_tags",
-        };
+        // let table = match action {
+        //     UserAction::VIEW => "view_tags",
+        //     UserAction::BUY => "buy_tags",
+        // };
 
-        print!("table: {}", table);
-        // insert into table based on action, serialize UserTagEvent to bytes
-        let serialized = bincode::serialize(&tag).unwrap();
-        let str: &str = cookie.0.as_str();
+        // print!("table: {}", table);
+        // // insert into table based on action, serialize UserTagEvent to bytes
+        // let serialized = bincode::serialize(&tag).unwrap();
+        // let str: &str = cookie.0.as_str();
 
-        sqlx::query(&format!(
-            "INSERT INTO {} (key, timestamp, value) VALUES ($1, $2, $3)",
-            table
-        ))
-        .bind(str)
-        .bind(tag.time)
-        .bind(serialized)
-        .execute(&self.pool)
-        .await
-        .unwrap();
+        // sqlx::query(&format!(
+        //     "INSERT INTO {} (key, timestamp, value) VALUES ($1, $2, $3)",
+        //     table
+        // ))
+        // .bind(str)
+        // .bind(tag.time)
+        // .bind(serialized)
+        // .execute(&self.pool)
+        // .await
+        // .unwrap();
     }
 
     async fn add_user_event_uncompresed(
@@ -334,8 +390,9 @@ impl Database for PostgresDB {
     async fn get_user_profile_uncompresed(&self, cookie: &Cookie) -> UserProfileUncompresed {
         // get from both tables based on cookie and deserialize
         let mut view_tags: Vec<ApiUserTag> =
-            sqlx::query("SELECT value FROM view_tags WHERE key = $1")
-                .bind(cookie.0.as_str())
+            sqlx::query("SELECT value FROM view_tags WHERE shard = $1 AND key = $2 ")
+                .bind(hash_string(cookie.0.as_str()))
+				.bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
                 .await
                 .unwrap()
@@ -346,8 +403,9 @@ impl Database for PostgresDB {
                 })
                 .collect();
         let mut buy_tags: Vec<ApiUserTag> =
-            sqlx::query("SELECT value FROM buy_tags WHERE key = $1")
-                .bind(cookie.0.as_str())
+            sqlx::query("SELECT value FROM buy_tags WHERE shard = $1 AND key = $2")
+                .bind(hash_string(cookie.0.as_str()))
+				.bind(cookie.0.as_str())
                 .fetch_all(&self.pool)
                 .await
                 .unwrap()
@@ -453,7 +511,7 @@ impl Database for PostgresDB {
 			aggregates.lock().unwrap().push(AggregateBucket { sum: 0, count: 0 });
 		}
 
-		let pool = self.pool.clone();
+		let pool = self.poolAggregate.clone();
 		let mut handles = vec![];
 		// for each minute get the data from the table
 		for (index, minute) in minutes_to_process.enumerate() {
