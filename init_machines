@@ -9,14 +9,19 @@ ansible-playbook --extra-vars "ansible_user=st123 ansible_password=$(cat passwrd
 # Copy the current directory to the remote host
 sshpass -p $(cat passwrd) scp -r $(pwd) st123@st123vm101.rtb-lab.pl:~/rtb
 
-rsync -av --progress --exclude=target $(pwd) st123@st123vm101.rtb-lab.pl:~/rtb
+rsync -av --progress --exclude=target $(pwd) st123@st123vm105.rtb-lab.pl:~/rtb
 
 
 
 # connect to vm103 and run docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres , then print ip address of vm103
-sshpass -p $(cat passwrd) ssh st123@st123vm103.rtb-lab.pl -o StrictHostKeyChecking=no -C "sudo docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres"
-sshpass -p $(cat passwrd) ssh st123@st123vm104.rtb-lab.pl -o StrictHostKeyChecking=no -C "sudo docker run --name some-postgres -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres"
+username="st123"
+password=$(cat passwrd)
+hosts=("st123vm103.rtb-lab.pl" "st123vm104.rtb-lab.pl" "st123vm106.rtb-lab.pl" "st123vm107.rtb-lab.pl" "st123vm108.rtb-lab.pl" "st123vm109.rtb-lab.pl")
+container_name="some-postgres"
 
+for host in "${hosts[@]}"; do
+    sshpass -p $password ssh $username@$host -o StrictHostKeyChecking=no -C "sudo docker kill $container_name; sudo docker rm $container_name; sudo docker run --name $container_name -e POSTGRES_PASSWORD=root -p 5432:5432 -d postgres"
+done
 # Print the IP address of vm103
 dig +short st123vm103.rtb-lab.pl
 dig +short st123vm104.rtb-lab.pl
