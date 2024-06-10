@@ -1,4 +1,5 @@
-use crate::{api::ApiUserTagWorking, data::UserTagEvent};
+use crate::data::UserTagEvent;
+use crate::api::ApiUserTag;
 
 #[derive(Default, Clone)]
 pub struct UserProfile {
@@ -8,6 +9,6 @@ pub struct UserProfile {
 
 #[derive(Default, Clone)]
 pub struct UserProfileUncompresed {
-	pub view_events: Vec<ApiUserTagWorking>,
-	pub buy_events: Vec<ApiUserTagWorking>,
+	pub view_events: Vec<ApiUserTag>,
+	pub buy_events: Vec<ApiUserTag>,
 }

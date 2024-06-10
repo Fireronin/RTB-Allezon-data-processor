@@ -23,7 +23,9 @@ pub struct AppState {
 async fn main() -> std::io::Result<()> {
 	// let database = Arc::new(LocalDB::new());
 	let database = Arc::new(PostgresDB::new().await.expect("Failed to create database"));
-	
+
+	println!("Listening on port 8082");
+
 	HttpServer::new(move || {
 		App::new()
 			.app_data(web::Data::new(AppState { 
