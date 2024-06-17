@@ -11,7 +11,6 @@ use crate::database::{CachedDB, LocalDB};
 use endpoints::*;
 
 pub struct AppState {
-	// pub database: Arc<CachedDB<LocalDB, AerospikeDB>>,
 	pub database: Arc<LocalDB>,
 }
 
@@ -20,7 +19,6 @@ async fn main() -> std::io::Result<()> {
 	env_logger::init();
 
 	let database = Arc::new(LocalDB::new());
-	// let database = Arc::new(CachedDB::new(LocalDB::new(), AerospikeDB::new()));
 
 	log::info!("Listening for requests on 8082");
 

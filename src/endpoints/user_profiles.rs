@@ -35,7 +35,7 @@ async fn filter_tags<T: Decompressor<UserTagEvent>>(decompressor: &T, mut user_t
 }
 
 #[post("/user_profiles/{cookie}")]
-pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> HttpResponse {
+pub async fn user_profiles(data: web::Data<AppState>, req_body: String, cookie: web::Path<String>, info: web::Query<UserProfileApiRequest>) -> HttpResponse {
 	let request = GetUserProfileRequest {
 		cookie: Cookie(cookie.into_inner()),
 		time_range: TimeRange::new(info.time_range.as_str()).unwrap(),
@@ -52,6 +52,13 @@ pub async fn user_profiles(data: web::Data<AppState>, _req_body: String, cookie:
 		views: filter_tags(data.database.as_ref(), user_profile.view_events, &request, UserAction::VIEW).await,
 		buys: filter_tags(data.database.as_ref(), user_profile.buy_events, &request, UserAction::BUY).await,
 	};
+
+	let sending = serde_json::to_string(&response).unwrap();
+	if req_body != sending {
+		log::debug!("Request {:?}", &request);
+		log::debug!("Expected {}", &req_body);
+		log::debug!("Sending  {}", &sending);
+	}
 
 	HttpResponse::Ok().json(response)
 }

@@ -1,6 +1,7 @@
 use chrono::SecondsFormat;
 use anyhow::Result;
 
+#[derive(Debug)]
 pub struct TimeRange {
 	pub start: i64,
 	pub end: i64,
@@ -31,6 +32,7 @@ pub fn parse_timestamp(timestamp: &str) -> Result<i64> {
 }
 
 pub fn timestamp_to_str(timestamp: i64) -> String {
-	chrono::DateTime::from_timestamp_millis(timestamp)
-		.unwrap().to_rfc3339_opts(SecondsFormat::Millis, true)
+	chrono::DateTime::from_timestamp_millis(timestamp).unwrap()
+		.to_rfc3339_opts(SecondsFormat::Millis, true)
+		.replace(".000Z", "Z") // TODO: this is required for debug only, tests pass without it, but strings with time are not equal
 }

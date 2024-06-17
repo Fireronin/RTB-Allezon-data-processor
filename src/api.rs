@@ -19,6 +19,7 @@ pub struct ApiUserTag {
 	pub origin: String,
 }
 
+#[derive(Debug)]
 pub struct GetUserProfileRequest {
 	pub cookie: Cookie,
 	pub time_range: TimeRange,
